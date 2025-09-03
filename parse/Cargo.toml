@@ -1,0 +1,9 @@
+[package]
+name = "parse"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cursor = { path = "../cursor" }
+ast = { path = "../ast" }
+ecow = "0.2.6"

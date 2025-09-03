@@ -1,0 +1,12 @@
+[package]
+name = "divinic"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+resolver = "2"
+members = ["cursor", "parse", "ast", "codegen", "driver"]
+
+[dependencies]
+parse = { path = "parse" }
+driver = { path = "driver" }
