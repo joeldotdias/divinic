@@ -1,6 +1,6 @@
 use ast::span::Span;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct DiagCtx {
     diagnostics: Vec<Diagnostic>,
     // the counts are just to show before printing errors
@@ -20,6 +20,7 @@ impl DiagCtx {
     }
 }
 
+#[derive(Debug)]
 pub struct Diagnostic {
     pub level: DiagLevel,
     pub message: String,
@@ -40,6 +41,7 @@ impl Diagnostic {
     // pub fn warn() -> Diagnostic{}
 }
 
+#[derive(Debug)]
 pub enum DiagLevel {
     Error,
     Warning,

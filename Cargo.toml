@@ -7,6 +7,9 @@ edition = "2024"
 resolver = "2"
 members = ["cursor", "parse", "ast", "codegen", "driver"]
 
+[workspace.dependencies]
+thiserror = "2.0.16"
+
 [dependencies]
 parse = { path = "parse" }
 driver = { path = "driver" }

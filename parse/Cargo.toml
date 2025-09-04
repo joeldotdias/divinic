@@ -7,3 +7,4 @@ edition = "2024"
 cursor = { path = "../cursor" }
 ast = { path = "../ast" }
 ecow = "0.2.6"
+thiserror.workspace = true
