@@ -8,6 +8,7 @@ fn main() {
     } else {
         vec!["testdata/small.HC".to_string()]
     };
-    let sesh = ParseSess::new(files);
-    dbg!(sesh);
+    let mut sesh = ParseSess::new(files);
+    dbg!(&sesh);
+    sesh.mk_ast();
 }

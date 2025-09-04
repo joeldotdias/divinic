@@ -9,7 +9,7 @@ pub struct Token {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
-    Ident(String),
+    Ident(EcoString),
 
     Literal(LitInner),
 

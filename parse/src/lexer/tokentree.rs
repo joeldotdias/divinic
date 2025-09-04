@@ -4,6 +4,7 @@ use ast::span::{DUMMY_SPAN, DelimSpan, Span};
 
 use crate::{
     diagnostic::Diagnostic,
+    error::{LexicalErr, LexicalErrKind, mk_lexical_err},
     lexer::{
         Lexer,
         token::{Delimiter, Token, TokenKind},
@@ -34,7 +35,8 @@ pub enum TokenTree {
 }
 
 impl<'sesh, 'src> Lexer<'sesh, 'src> {
-    pub fn lex_token_trees(&mut self, is_delimited: bool) -> Result<TokenStream, Vec<Diagnostic>> {
+    // pub fn lex_token_trees(&mut self, is_delimited: bool) -> Result<TokenStream, Vec<Diagnostic>> {
+    pub fn lex_token_trees(&mut self, is_delimited: bool) -> Result<TokenStream, Vec<LexicalErr>> {
         self.bump_past_delim();
 
         let mut tt_buf = Vec::new();
@@ -49,7 +51,7 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
                 return if is_delimited {
                     Ok(TokenStream::new(tt_buf))
                 } else {
-                    Err(vec![self.closed_delim_error()])
+                    Err(vec![self.closed_delim_error(delim)])
                 };
             } else if self.token.kind == TokenKind::Eof {
                 return if is_delimited {
@@ -67,11 +69,13 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
     fn lex_token_tree_opened(
         &mut self,
         open_delim: Delimiter,
-    ) -> Result<TokenTree, Vec<Diagnostic>> {
+        // ) -> Result<TokenTree, Vec<Diagnostic>> {
+    ) -> Result<TokenTree, Vec<LexicalErr>> {
         // span for opening of the delimited section
         let pre_span = self.token.span;
 
-        self.tt_diag.open_delims.push((open_delim, self.token.span));
+        // self.tt_diag.open_delims.push((open_delim, self.token.span));
+        self.open_delims.push((open_delim, self.token.span));
 
         let tts = self.lex_token_trees(true)?;
         let delim_span = DelimSpan::from_pair(pre_span, self.token.span);
@@ -117,22 +121,26 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
         this_tok
     }
 
-    fn eof_error(&mut self) -> Diagnostic {
-        Diagnostic::err(
-            "contains an unclosed delimiter".to_string(),
-            "unclosed delimeter".to_string(),
-            self.token.span,
-        )
+    // fn eof_error(&mut self) -> Diagnostic {
+    fn eof_error(&mut self) -> LexicalErr {
+        // Diagnostic::err(
+        //     "contains an unclosed delimiter".to_string(),
+        //     "unclosed delimeter".to_string(),
+        //     self.token.span,
+        // )
+        mk_lexical_err(LexicalErrKind::UnexpectedEof, self.token.span)
     }
 
-    fn closed_delim_error(&mut self) -> Diagnostic {
-        let tok_str = self.token.to_str();
-
-        Diagnostic::err(
-            format!("unexpected closing delimiter: `{}`", tok_str),
-            "unexpected closing delimeter".to_string(),
-            self.token.span,
-        )
+    // fn closed_delim_error(&mut self) -> Diagnostic {
+    fn closed_delim_error(&mut self, delim: Delimiter) -> LexicalErr {
+        // let tok_str = self.token.to_str();
+        //
+        // Diagnostic::err(
+        //     format!("unexpected closing delimiter: `{}`", tok_str),
+        //     "unexpected closing delimeter".to_string(),
+        //     self.token.span,
+        // )
+        mk_lexical_err(LexicalErrKind::UnexpectedDelimClose(delim), self.token.span)
     }
 
     fn bump_past_delim(&mut self) {

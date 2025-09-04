@@ -1,6 +1,9 @@
 use std::{fs, io, path::PathBuf};
 
-use crate::diagnostic::DiagCtx;
+use crate::{
+    diagnostic::DiagCtx,
+    lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor},
+};
 
 #[derive(Default, Debug)]
 pub struct ParseSess {
@@ -20,7 +23,27 @@ impl ParseSess {
         }
     }
 
-    pub fn mk_ast(&self) {}
+    pub fn mk_ast(&mut self) {
+        for (i, f) in self.source_files.iter().enumerate() {
+            self.curr = i as u16;
+
+            let stream = lex_token_trees(&self, &f.src);
+            let mut cursor = TokenCursor::new(stream);
+
+            loop {
+                let token = cursor.next();
+                if matches!(token.kind, TokenKind::Eof) {
+                    break;
+                }
+                println!("{:?}", token);
+            }
+        }
+    }
+
+    pub fn src_file(&self, idx: usize) -> (PathBuf, &str) {
+        let f = &self.source_files[idx];
+        (f.name.clone(), f.src.as_str())
+    }
 }
 
 // pub struct SourceMap {

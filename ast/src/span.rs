@@ -1,8 +1,8 @@
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Span {
-    lo: u32,
-    len: u16,
-    fid: u16,
+    pub lo: u32,
+    pub len: u16,
+    pub fid: u16,
 }
 
 pub const DUMMY_SPAN: Span = Span {

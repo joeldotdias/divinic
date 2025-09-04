@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use ast::span::Span;
 use cursor::{
     Cursor,
@@ -6,6 +8,7 @@ use cursor::{
 use ecow::EcoString;
 
 use crate::{
+    error::{LexicalErr, LexicalErrKind, mk_lexical_err},
     lexer::{
         token::{Delimiter, LitInner, LitKind, Token, TokenKind},
         tokentree::{TokenStream, UnmatchedDelim},
@@ -28,29 +31,61 @@ pub(crate) fn lex_token_trees<'sesh, 'src>(
         cursor,
         token: Token::dummy(),
         pos: 0,
-        tt_diag: TokenTreeDiagInfo::default(),
+        open_delims: Vec::new(),
+        unmacthed_delims: Vec::new(),
+        latest_unclosed_span: None,
+        errs: Vec::new(),
     };
 
     let res = lexer.lex_token_trees(false);
+
+    for e in lexer.errs {
+        let (filename, source) = psesh.src_file(e.loc.fid as usize);
+        e.report(filename.to_str().unwrap(), source);
+        exit(1);
+    }
 
     match res {
         Ok(ts) => {
             println!("Result:\n{:#?}", ts);
             ts
         }
-        Err(_errs) => {
-            todo!()
+        Err(errs) => {
+            for e in errs {
+                let (filename, source) = psesh.src_file(e.loc.fid as usize);
+                e.report(filename.to_str().unwrap(), source);
+            }
+            exit(1);
         }
     }
 }
 
 pub struct Lexer<'sesh, 'src> {
+    // ongoing parse session
     psesh: &'sesh ParseSess,
+    // source text we're tokenizing rn
     source: &'src str,
+    // cursor for getting raw tokens
     cursor: Cursor<'src>,
+
+    // current state tracking
     token: Token,
     pos: u32,
-    tt_diag: TokenTreeDiagInfo,
+
+    // stack of open delims
+    pub open_delims: Vec<(Delimiter, Span)>,
+
+    // collecting all the unmatched delimiters found during parsing
+    // their reporting are defered for now so we can just bail instead
+    // of the parser doesn't blow up at the first unmatched delim
+    pub unmacthed_delims: Vec<UnmatchedDelim>,
+
+    // this is just for error-ing at EOF
+    // not sure if this needs to be tracked in state
+    // might move this to just a function later
+    pub latest_unclosed_span: Option<Span>,
+    // tt_diag: TokenTreeDiagInfo,
+    pub errs: Vec<LexicalErr>,
 }
 
 impl<'sesh, 'src> Lexer<'sesh, 'src> {
@@ -108,7 +143,12 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
 
                 // TODO emit errs here
                 RawTokenKind::Unknown => {
-                    todo!()
+                    let culprit = self.str_from(start).chars().next().unwrap();
+                    self.errs.push(mk_lexical_err(
+                        LexicalErrKind::UnrecognizedToken(culprit),
+                        self.make_span(start, self.pos),
+                    ));
+                    continue;
                 }
             };
 
@@ -119,8 +159,9 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
     }
 
     fn ident_or_kw(&self, start: u32) -> TokenKind {
-        let label = self.str_from(start).to_string();
-        match label.as_str() {
+        let label = self.str_from(start);
+
+        match label {
             "Bool" => TokenKind::Bool,
             "U0" => TokenKind::U0,
             "U8" => TokenKind::U8,
@@ -145,7 +186,7 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
             "include" => TokenKind::Include,
             "define" => TokenKind::Define,
 
-            _ => TokenKind::Ident(label),
+            _ => TokenKind::Ident(label.into()),
         }
     }
 
@@ -192,20 +233,4 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
     fn make_span(&self, lo: u32, hi: u32) -> Span {
         Span::new_from_file(lo, hi, self.psesh.curr)
     }
-}
-
-#[derive(Default)]
-pub struct TokenTreeDiagInfo {
-    // stack of open delims
-    pub open_delims: Vec<(Delimiter, Span)>,
-
-    // collecting all the unmatched delimiters found during parsing
-    // their reporting are defered for now so we can just bail instead
-    // of the parser doesn't blow up at the first unmatched delim
-    pub unmacthed_delims: Vec<UnmatchedDelim>,
-
-    // this is just for error-ing at EOF
-    // not sure if this needs to be tracked in state
-    // might move this to just a function later
-    pub latest_unclosed_span: Option<Span>,
 }

@@ -3,7 +3,7 @@ U0 Main() {
     if(num == 0) {
         num++;
     } else {
-        num = 7;
+        num = 7;@
     }
 
     "num is: %d\n", num
