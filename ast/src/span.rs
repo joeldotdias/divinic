@@ -12,7 +12,7 @@ pub const DUMMY_SPAN: Span = Span {
 };
 
 impl Span {
-    pub fn new_from_file(lo: u32, hi: u32, fid: u16) -> Self {
+    pub fn new_from_file(lo: u32, hi: u32, _fid: u16) -> Self {
         Span {
             lo,
             len: (hi - lo) as u16,
@@ -38,7 +38,7 @@ impl Span {
         // Span::new(self.lo, added.hi())
     }
 
-    fn hi(&self) -> u32 {
+    pub fn hi(&self) -> u32 {
         // self.lo + self.len as u32 - 1
         self.lo + self.len as u32
     }
@@ -55,3 +55,4 @@ impl DelimSpan {
         DelimSpan { open, close }
     }
 }
+

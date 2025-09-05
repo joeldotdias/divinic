@@ -1,0 +1,168 @@
+Module ::= Declaration*
+
+Declaration ::= FunctionDeclaration
+              | VariableDeclaration  
+              | ClassOrUnionDeclaration
+              | EnumDeclaration
+
+FunctionDeclaration ::= Specifier* Declarator Statement
+
+VariableDeclaration ::= Specifier* Expression?
+
+ClassOrUnionDeclaration ::= ClassOrUnionKind Identifier? ClassDeclaration*
+
+EnumDeclaration ::= Identifier? Enumerator*
+
+Specifier ::= StorageSpecifier | TypeSpecifier | QualifierSpecifier
+
+StorageSpecifier ::= "Reg" | "NoReg" | "Public" | "Static" | "Extern" | "UnderscoreExtern"
+
+TypeSpecifier ::= "U0" | "U8" | "U16" | "U32" | "U64"
+                | "I0" | "I8" | "I16" | "I32" | "I64" 
+                | "F64"
+                | ClassOrUnionType
+                | EnumType
+
+ClassOrUnionType ::= ClassOrUnionKind Identifier
+
+EnumType ::= Identifier
+
+QualifierSpecifier ::= "Const" | "Volatile"
+
+Declarator ::= DirectDeclarator Declarator?
+
+DirectDeclarator ::= IdentDeclarator
+                   | ParenDeclarator
+                   | ArrayDeclarator
+                   | FunctionDeclarator
+
+IdentDeclarator ::= Identifier
+
+ParenDeclarator ::= "(" Declarator ")"
+
+ArrayDeclarator ::= Declarator "[" Expression? "]"
+
+FunctionDeclarator ::= Declarator "(" Declaration* ")" "..."?
+
+Statement ::= ExpressionStatement
+            | CompoundStatement
+            | IfStatement
+            | WhileStatement
+            | DoWhileStatement
+            | ForStatement
+            | SwitchStatement
+            | ReturnStatement
+            | BreakStatement
+            | ContinueStatement
+            | GotoStatement
+
+ExpressionStatement ::= Expression
+
+CompoundStatement ::= "{" Statement* "}"
+
+IfStatement ::= "if" "(" Expression ")" Statement ("else" Statement)?
+
+WhileStatement ::= "while" "(" Expression ")" Statement
+
+DoWhileStatement ::= "do" Statement "while" "(" Expression ")"
+
+ForStatement ::= "for" "(" Statement? ";" Expression? ";" Expression? ")" Statement
+
+SwitchStatement ::= "switch" "(" Expression ")" Case*
+
+ReturnStatement ::= "return" Expression?
+
+BreakStatement ::= "break"
+
+ContinueStatement ::= "continue"
+
+GotoStatement ::= "goto" Identifier
+
+Case ::= "case" Expression ":" Statement*
+
+ClassOrUnionKind ::= "Class" | "Union"
+
+ClassDeclaration ::= Specifier* ClassDeclarator*
+
+ClassDeclarator ::= Declarator
+                  | Declarator ":" Expression
+                  | ":" Expression
+
+Enumerator ::= Identifier ("=" Expression)?
+
+TypeName ::= Specifier* Declarator?
+
+Expression ::= IdentExpression
+             | ConstantExpression
+             | AssignExpression
+             | BinaryExpression
+             | UnaryExpression
+             | ConditionalExpression
+             | CallExpression
+             | MemberExpression
+             | IndexExpression
+             | PostfixExpression
+             | CastExpression
+             | SizeofExprExpression
+             | SizeofTypeExpression
+             | CommaExpression
+             | ParenExpression
+
+IdentExpression ::= Identifier
+
+ConstantExpression ::= Constant
+
+AssignExpression ::= Expression AssignOperator Expression
+
+BinaryExpression ::= Expression BinaryOperator Expression
+
+UnaryExpression ::= UnaryOperator Expression
+
+ConditionalExpression ::= Expression "?" Expression ":" Expression
+
+CallExpression ::= Expression "(" Expression* ")"
+
+MemberExpression ::= Expression ("." | "->") Identifier
+
+IndexExpression ::= Expression "[" Expression "]"
+
+PostfixExpression ::= Expression PostfixOperator
+
+CastExpression ::= "(" TypeName ")" Expression
+
+SizeofExprExpression ::= "sizeof" Expression
+
+SizeofTypeExpression ::= "sizeof" "(" TypeName ")"
+
+CommaExpression ::= Expression ("," Expression)+
+
+ParenExpression ::= "(" Expression ")"
+
+; these are like... self explanatory but might as well add them?
+
+AssignOperator ::= "=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<=" | ">>=" | "&=" | "^=" | "|="
+
+BinaryOperator ::= "+" | "-" | "*" | "/" | "%" | "<<" | ">>" 
+                 | "<" | "<=" | ">" | ">=" | "==" | "!="
+                 | "&" | "^" | "|" | "&&" | "||"
+
+UnaryOperator ::= "++" | "--" | "&" | "*" | "+" | "-" | "~" | "!"
+
+PostfixOperator ::= "++" | "--"
+
+Constant ::= IntConstant | UIntConstant | FloatConstant | CharConstant | StringConstant | BoolConstant
+
+IntConstant ::= ["-"]? [0-9]+
+
+UIntConstant ::= [0-9]+ ("u" | "U")
+
+FloatConstant ::= ["-"]? [0-9]* "." [0-9]+ (("e" | "E") ["-"]? [0-9]+)?
+
+CharConstant ::= "'" [^'] "'"
+
+StringConstant ::= '"' [^"]* '"'
+
+BoolConstant ::= "true" | "false"
+
+Identifier ::= [a-zA-Z_] [a-zA-Z0-9_]*
+
