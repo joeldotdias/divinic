@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 inkwell = { version = "0.6.0", features = ["llvm18-1"] }
+ast = { path = "../ast" }
+

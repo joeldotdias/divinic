@@ -7,11 +7,11 @@ pub type Identifier = String;
 pub struct Module {
     pub id: NodeId,
     pub span: Span,
-    pub items: Vec<Decl>,
+    pub items: Vec<Declaration>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Decl {
+pub enum Declaration {
     Function {
         id: NodeId,
         span: Span,
@@ -122,7 +122,7 @@ pub enum DirectDeclarator {
         id: NodeId,
         span: Span,
         base: Box<Declarator>,
-        params: Vec<Decl>,
+        params: Vec<Declaration>,
         varargs: bool,
     },
 }
@@ -405,5 +405,102 @@ pub enum Constant {
     Char(char),
     String(String),
     Bool(bool),
+}
+
+impl Expression {
+    pub fn ident(name: impl Into<String>, id: NodeId, span: Span) -> Self {
+        Expression::Ident {
+            id,
+            span,
+            name: name.into(),
+        }
+    }
+
+    pub fn int(value: i64, id: NodeId, span: Span) -> Self {
+        Expression::Constant {
+            id,
+            span,
+            value: Constant::Int(value),
+        }
+    }
+
+    pub fn uint(value: u64, id: NodeId, span: Span) -> Self {
+        Expression::Constant {
+            id,
+            span,
+            value: Constant::UInt(value),
+        }
+    }
+
+    pub fn float(value: f64, id: NodeId, span: Span) -> Self {
+        Expression::Constant {
+            id,
+            span,
+            value: Constant::Float(value),
+        }
+    }
+
+    pub fn bin(lhs: Expression, op: BinaryOp, rhs: Expression, id: NodeId, span: Span) -> Self {
+        Expression::Binary {
+            id,
+            span,
+            op,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }
+    }
+
+    pub fn assign(lhs: Expression, rhs: Expression, id: NodeId, span: Span) -> Self {
+        Expression::Assign {
+            id,
+            span,
+            lhs: Box::new(lhs),
+            op: AssignOp::Assign,
+            rhs: Box::new(rhs),
+        }
+    }
+
+    pub fn call(func: Expression, args: Vec<Expression>, id: NodeId, span: Span) -> Self {
+        Expression::Call {
+            id,
+            span,
+            func: Box::new(func),
+            args,
+        }
+    }
+
+    pub fn is_const(&self) -> bool {
+        matches!(self, Expression::Constant { .. })
+    }
+}
+
+impl Statement {
+    pub fn expr(expr: Expression, id: NodeId, span: Span) -> Self {
+        Statement::ExprStmt { id, span, expr }
+    }
+
+    pub fn block(items: Vec<Statement>, id: NodeId, span: Span) -> Self {
+        Statement::Compound { id, span, items }
+    }
+
+    pub fn ret(expr: Option<Expression>, id: NodeId, span: Span) -> Self {
+        Statement::Return { id, span, expr }
+    }
+
+    pub fn if_stmt(
+        cond: Expression,
+        then_branch: Statement,
+        else_branch: Option<Statement>,
+        id: NodeId,
+        span: Span,
+    ) -> Self {
+        Statement::If {
+            id,
+            span,
+            cond,
+            then_branch: Box::new(then_branch),
+            else_branch: else_branch.map(Box::new),
+        }
+    }
 }
 

@@ -35,6 +35,7 @@ dependencies = [
 name = "codegen"
 version = "0.1.0"
 dependencies = [
+ "ast",
  "inkwell",
 ]
 
@@ -46,6 +47,7 @@ version = "0.1.0"
 name = "divinic"
 version = "0.1.0"
 dependencies = [
+ "codegen",
  "driver",
  "parse",
 ]
