@@ -5,177 +5,138 @@ pub type Identifier = String;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
-    pub id: NodeId,
-    pub span: Span,
-    pub items: Vec<Declaration>,
+    pub decls: Vec<DeclarationOrStmt>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DeclarationOrStmt {
+    Declaration(Declaration),
+    Stmt(Stmt),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Declaration {
-    Function {
+    Var {
         id: NodeId,
         span: Span,
-        specifiers: Vec<Specifier>,
-        declarator: Declarator,
-        body: Statement,
+        name: Identifier,
+        ty: Type,
+        init: Option<Expr>,
     },
-    Variable {
+    Func {
         id: NodeId,
         span: Span,
-        specifiers: Vec<Specifier>,
-        init: Option<Expression>,
+        name: Identifier,
+        ret_ty: Type,
+        params: Vec<Param>,
+        body: Stmt,
     },
-    ClassOrUnion {
+    Struct {
         id: NodeId,
         span: Span,
-        kind: ClassOrUnionKind,
         name: Option<Identifier>,
-        members: Vec<ClassDecl>,
+        fields: Vec<Declaration>, // dumbed down
     },
     Enum {
         id: NodeId,
         span: Span,
         name: Option<Identifier>,
-        enumerators: Vec<Enumerator>,
+        variants: Vec<Enumerator>,
     },
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Specifier {
-    Storage {
-        id: NodeId,
-        span: Span,
-        class: StorageClassSpecifier,
-    },
-    Type {
-        id: NodeId,
-        span: Span,
-        kind: TypeSpecifier,
-    },
-    Qualifier {
-        id: NodeId,
-        span: Span,
-        qual: TypeQualifier,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum StorageClassSpecifier {
-    Reg,
-    NoReg,
-    Public,
-    Static,
-    Extern,
-    UnderscoreExtern,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum TypeSpecifier {
-    U0,
-    U8,
-    U16,
-    U32,
-    U64,
-    I0,
-    I8,
-    I16,
-    I32,
-    I64,
-    F64,
-    ClassOrUnion(ClassOrUnionKind, Identifier),
-    Enum(Identifier),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum TypeQualifier {
-    Const,
-    Volatile,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Declarator {
+pub struct Param {
     pub id: NodeId,
     pub span: Span,
-    pub direct: Box<DirectDeclarator>,
-    pub pointer: Option<Box<Declarator>>,
+    pub name: Identifier,
+    pub ty: Type,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum DirectDeclarator {
-    Ident {
-        id: NodeId,
-        span: Span,
-        name: Identifier,
-    },
-    Paren {
-        id: NodeId,
-        span: Span,
-        inner: Box<Declarator>,
-    },
-    Array {
-        id: NodeId,
-        span: Span,
-        base: Box<Declarator>,
-        size: Option<Expression>,
-    },
+pub struct Enumerator {
+    pub id: NodeId,
+    pub span: Span,
+    pub name: Identifier,
+    pub value: Option<Expr>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Type {
+    Inbuilt(InbuiltType),
+    Named(Identifier),
+    Pointer(Box<Type>),
+    Array(Box<Type>, Option<Expr>),
     Function {
-        id: NodeId,
-        span: Span,
-        base: Box<Declarator>,
-        params: Vec<Declaration>,
+        params: Vec<Type>,
+        ret: Box<Type>,
         varargs: bool,
     },
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Statement {
-    ExprStmt {
+pub enum InbuiltType {
+    U0,
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
+    F64,
+    Bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Stmt {
+    Expr {
         id: NodeId,
         span: Span,
-        expr: Expression,
+        expr: Expr,
     },
-    Compound {
+    Block {
         id: NodeId,
         span: Span,
-        items: Vec<Statement>,
+        stmts: Vec<Stmt>,
     },
     If {
         id: NodeId,
         span: Span,
-        cond: Expression,
-        then_branch: Box<Statement>,
-        else_branch: Option<Box<Statement>>,
-    },
-    While {
-        id: NodeId,
-        span: Span,
-        cond: Expression,
-        body: Box<Statement>,
-    },
-    DoWhile {
-        id: NodeId,
-        span: Span,
-        body: Box<Statement>,
-        cond: Expression,
-    },
-    For {
-        id: NodeId,
-        span: Span,
-        init: Option<Box<Statement>>,
-        cond: Option<Expression>,
-        step: Option<Expression>,
-        body: Box<Statement>,
+        cond: Expr,
+        then_branch: Box<Stmt>,
+        ladder: Vec<(Expr, Stmt)>,
+        else_branch: Option<Box<Stmt>>,
     },
     Switch {
         id: NodeId,
         span: Span,
-        cond: Expression,
+        expr: Expr,
         cases: Vec<Case>,
+        // switch [i] -> can skip default
+        // read https://holyc-lang.com/docs/language-spec/learn-control-flow#without-bounds-checking
+        nobounds: bool,
+    },
+
+    While {
+        id: NodeId,
+        span: Span,
+        cond: Expr,
+        body: Box<Stmt>,
+    },
+    For {
+        id: NodeId,
+        span: Span,
+        init: Option<Box<Stmt>>,
+        cond: Option<Expr>,
+        step: Option<Expr>,
+        body: Box<Stmt>,
     },
     Return {
         id: NodeId,
         span: Span,
-        expr: Option<Expression>,
+        expr: Option<Expr>,
     },
     Break {
         id: NodeId,
@@ -185,73 +146,17 @@ pub enum Statement {
         id: NodeId,
         span: Span,
     },
-    Goto {
-        id: NodeId,
-        span: Span,
-        label: Identifier,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Case {
-    pub id: NodeId,
-    pub span: Span,
-    pub value: Expression,
-    pub body: Vec<Statement>,
+    // possible TODO: Constant -> Expr???
+    pub values: Option<Vec<Constant>>,
+    pub body: Stmt,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ClassOrUnionKind {
-    Class,
-    Union,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ClassDecl {
-    pub id: NodeId,
-    pub span: Span,
-    pub specifiers: Vec<Specifier>,
-    pub declarators: Vec<ClassDeclarator>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ClassDeclarator {
-    Declarator {
-        id: NodeId,
-        span: Span,
-        declarator: Declarator,
-    },
-    DeclaratorWithBitfield {
-        id: NodeId,
-        span: Span,
-        declarator: Declarator,
-        width: Expression,
-    },
-    Bitfield {
-        id: NodeId,
-        span: Span,
-        width: Expression,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Enumerator {
-    pub id: NodeId,
-    pub span: Span,
-    pub name: Identifier,
-    pub value: Option<Expression>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct TypeName {
-    pub id: NodeId,
-    pub span: Span,
-    pub specifiers: Vec<Specifier>,
-    pub declarator: Option<Declarator>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Expression {
+pub enum Expr {
     Ident {
         id: NodeId,
         span: Span,
@@ -265,96 +170,69 @@ pub enum Expression {
     Assign {
         id: NodeId,
         span: Span,
-        lhs: Box<Expression>,
-        op: AssignOp,
-        rhs: Box<Expression>,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
     },
     Binary {
         id: NodeId,
         span: Span,
         op: BinaryOp,
-        lhs: Box<Expression>,
-        rhs: Box<Expression>,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
     },
     Unary {
         id: NodeId,
         span: Span,
         op: UnaryOp,
-        expr: Box<Expression>,
-    },
-    Conditional {
-        id: NodeId,
-        span: Span,
-        cond: Box<Expression>,
-        then_expr: Box<Expression>,
-        else_expr: Box<Expression>,
+        expr: Box<Expr>,
     },
     Call {
         id: NodeId,
         span: Span,
-        func: Box<Expression>,
-        args: Vec<Expression>,
+        func: Box<Expr>,
+        args: Vec<Expr>,
     },
     Member {
         id: NodeId,
         span: Span,
-        base: Box<Expression>,
+        base: Box<Expr>,
         field: Identifier,
         arrow: bool,
     },
     Index {
         id: NodeId,
         span: Span,
-        base: Box<Expression>,
-        index: Box<Expression>,
+        base: Box<Expr>,
+        index: Box<Expr>,
     },
-    Postfix {
+    Conditional {
         id: NodeId,
         span: Span,
-        op: PostfixOp,
-        expr: Box<Expression>,
+        cond: Box<Expr>,
+        then_expr: Box<Expr>,
+        else_expr: Box<Expr>,
     },
     Cast {
         id: NodeId,
         span: Span,
-        ty: TypeName,
-        expr: Box<Expression>,
-    },
-    SizeofExpr {
-        id: NodeId,
-        span: Span,
-        expr: Box<Expression>,
-    },
-    SizeofType {
-        id: NodeId,
-        span: Span,
-        ty: TypeName,
-    },
-    Comma {
-        id: NodeId,
-        span: Span,
-        exprs: Vec<Expression>,
+        ty: Box<Type>,
+        expr: Box<Expr>,
     },
     Paren {
         id: NodeId,
         span: Span,
-        expr: Box<Expression>,
+        expr: Box<Expr>,
     },
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum AssignOp {
-    Assign,
-    MulAssign,
-    DivAssign,
-    ModAssign,
-    AddAssign,
-    SubAssign,
-    ShlAssign,
-    ShrAssign,
-    AndAssign,
-    XorAssign,
-    OrAssign,
+pub enum Constant {
+    Int(i64),
+    UInt(u64),
+    Float(f64),
+    Char(char),
+    String(String),
+    Bool(bool),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -391,57 +269,155 @@ pub enum UnaryOp {
     LogNot,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum PostfixOp {
-    PostInc,
-    PostDec,
+// helpers
+
+impl Declaration {
+    pub fn var(id: NodeId, span: Span, name: String, ty: Type, init: Option<Expr>) -> Self {
+        Self::Var {
+            id,
+            span,
+            name,
+            ty,
+            init,
+        }
+    }
+
+    pub fn func(
+        id: NodeId,
+        span: Span,
+        name: String,
+        ret_ty: Type,
+        params: Vec<Param>,
+        body: Stmt,
+    ) -> Self {
+        Self::Func {
+            id,
+            span,
+            name,
+            ret_ty,
+            params,
+            body,
+        }
+    }
+
+    pub fn strukt(id: NodeId, span: Span, name: Option<String>, fields: Vec<Declaration>) -> Self {
+        Self::Struct {
+            id,
+            span,
+            name,
+            fields,
+        }
+    }
+
+    pub fn enumm(id: NodeId, span: Span, name: Option<String>, variants: Vec<Enumerator>) -> Self {
+        Self::Enum {
+            id,
+            span,
+            name,
+            variants,
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Constant {
-    Int(i64),
-    UInt(u64),
-    Float(f64),
-    Char(char),
-    String(String),
-    Bool(bool),
+impl Type {
+    pub fn inbuilt(t: InbuiltType) -> Self {
+        Self::Inbuilt(t)
+    }
+    pub fn named(name: String) -> Self {
+        Self::Named(name)
+    }
+    pub fn pointer(inner: Type) -> Self {
+        Self::Pointer(Box::new(inner))
+    }
+    pub fn array(inner: Type, size: Option<Expr>) -> Self {
+        Self::Array(Box::new(inner), size)
+    }
+    pub fn function(params: Vec<Type>, ret: Type, varargs: bool) -> Self {
+        Self::Function {
+            params,
+            ret: Box::new(ret),
+            varargs,
+        }
+    }
 }
 
-impl Expression {
-    pub fn ident(name: impl Into<String>, id: NodeId, span: Span) -> Self {
-        Expression::Ident {
+impl Stmt {
+    pub fn expr(id: NodeId, span: Span, expr: Expr) -> Self {
+        Self::Expr { id, span, expr }
+    }
+    pub fn block(id: NodeId, span: Span, stmts: Vec<Stmt>) -> Self {
+        Self::Block { id, span, stmts }
+    }
+    pub fn if_stmt(
+        id: NodeId,
+        span: Span,
+        cond: Expr,
+        then_branch: Stmt,
+        else_if: Vec<(Expr, Stmt)>,
+        else_branch: Option<Stmt>,
+    ) -> Self {
+        Self::If {
             id,
             span,
-            name: name.into(),
+            cond,
+            then_branch: Box::new(then_branch),
+            ladder: else_if, // keep old name if you prefer
+            else_branch: else_branch.map(Box::new),
         }
     }
-
-    pub fn int(value: i64, id: NodeId, span: Span) -> Self {
-        Expression::Constant {
+    pub fn while_stmt(id: NodeId, span: Span, cond: Expr, body: Stmt) -> Self {
+        Self::While {
             id,
             span,
-            value: Constant::Int(value),
+            cond,
+            body: Box::new(body),
         }
     }
-
-    pub fn uint(value: u64, id: NodeId, span: Span) -> Self {
-        Expression::Constant {
+    pub fn for_stmt(
+        id: NodeId,
+        span: Span,
+        init: Option<Stmt>,
+        cond: Option<Expr>,
+        step: Option<Expr>,
+        body: Stmt,
+    ) -> Self {
+        Self::For {
             id,
             span,
-            value: Constant::UInt(value),
+            init: init.map(Box::new),
+            cond,
+            step,
+            body: Box::new(body),
         }
     }
+    pub fn return_stmt(id: NodeId, span: Span, expr: Option<Expr>) -> Self {
+        Self::Return { id, span, expr }
+    }
+    pub fn break_stmt(id: NodeId, span: Span) -> Self {
+        Self::Break { id, span }
+    }
+    pub fn continue_stmt(id: NodeId, span: Span) -> Self {
+        Self::Continue { id, span }
+    }
+}
 
-    pub fn float(value: f64, id: NodeId, span: Span) -> Self {
-        Expression::Constant {
+impl Expr {
+    pub fn ident(id: NodeId, span: Span, name: String) -> Self {
+        Self::Ident { id, span, name }
+    }
+    pub fn constant(id: NodeId, span: Span, value: Constant) -> Self {
+        Self::Constant { id, span, value }
+    }
+    pub fn assign(id: NodeId, span: Span, lhs: Expr, rhs: Expr) -> Self {
+        Self::Assign {
             id,
             span,
-            value: Constant::Float(value),
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
         }
     }
-
-    pub fn bin(lhs: Expression, op: BinaryOp, rhs: Expression, id: NodeId, span: Span) -> Self {
-        Expression::Binary {
+    pub fn binary(id: NodeId, span: Span, op: BinaryOp, lhs: Expr, rhs: Expr) -> Self {
+        Self::Binary {
             id,
             span,
             op,
@@ -449,58 +425,67 @@ impl Expression {
             rhs: Box::new(rhs),
         }
     }
-
-    pub fn assign(lhs: Expression, rhs: Expression, id: NodeId, span: Span) -> Self {
-        Expression::Assign {
+    pub fn unary(id: NodeId, span: Span, op: UnaryOp, expr: Expr) -> Self {
+        Self::Unary {
             id,
             span,
-            lhs: Box::new(lhs),
-            op: AssignOp::Assign,
-            rhs: Box::new(rhs),
+            op,
+            expr: Box::new(expr),
         }
     }
-
-    pub fn call(func: Expression, args: Vec<Expression>, id: NodeId, span: Span) -> Self {
-        Expression::Call {
+    pub fn call(id: NodeId, span: Span, func: Expr, args: Vec<Expr>) -> Self {
+        Self::Call {
             id,
             span,
             func: Box::new(func),
             args,
         }
     }
-
-    pub fn is_const(&self) -> bool {
-        matches!(self, Expression::Constant { .. })
-    }
-}
-
-impl Statement {
-    pub fn expr(expr: Expression, id: NodeId, span: Span) -> Self {
-        Statement::ExprStmt { id, span, expr }
-    }
-
-    pub fn block(items: Vec<Statement>, id: NodeId, span: Span) -> Self {
-        Statement::Compound { id, span, items }
-    }
-
-    pub fn ret(expr: Option<Expression>, id: NodeId, span: Span) -> Self {
-        Statement::Return { id, span, expr }
-    }
-
-    pub fn if_stmt(
-        cond: Expression,
-        then_branch: Statement,
-        else_branch: Option<Statement>,
-        id: NodeId,
-        span: Span,
-    ) -> Self {
-        Statement::If {
+    pub fn member(id: NodeId, span: Span, base: Expr, field: String, arrow: bool) -> Self {
+        Self::Member {
             id,
             span,
-            cond,
-            then_branch: Box::new(then_branch),
-            else_branch: else_branch.map(Box::new),
+            base: Box::new(base),
+            field,
+            arrow,
+        }
+    }
+    pub fn index(id: NodeId, span: Span, base: Expr, index: Expr) -> Self {
+        Self::Index {
+            id,
+            span,
+            base: Box::new(base),
+            index: Box::new(index),
+        }
+    }
+    pub fn conditional(
+        id: NodeId,
+        span: Span,
+        cond: Expr,
+        then_expr: Expr,
+        else_expr: Expr,
+    ) -> Self {
+        Self::Conditional {
+            id,
+            span,
+            cond: Box::new(cond),
+            then_expr: Box::new(then_expr),
+            else_expr: Box::new(else_expr),
+        }
+    }
+    pub fn cast(id: NodeId, span: Span, ty: Type, expr: Expr) -> Self {
+        Self::Cast {
+            id,
+            span,
+            ty: Box::new(ty),
+            expr: Box::new(expr),
+        }
+    }
+    pub fn paren(id: NodeId, span: Span, expr: Expr) -> Self {
+        Self::Paren {
+            id,
+            span,
+            expr: Box::new(expr),
         }
     }
 }
-

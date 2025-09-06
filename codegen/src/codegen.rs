@@ -1,11 +1,18 @@
-use inkwell::{builder::Builder, context::Context, module::Module, values::FunctionValue};
+// use std::collections::HashMap;
 
-// ignore, this is boilerplate ahh code
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    module::Module,
+    // values::{FunctionValue, PointerValue},
+};
 
 pub struct Codegen<'ctx> {
     pub context: &'ctx Context,
     pub module: Module<'ctx>,
     pub builder: Builder<'ctx>,
+    // functions: HashMap<String, FunctionValue<'ctx>>,
+    // variables: HashMap<String, PointerValue<'ctx>>,
 }
 
 impl<'ctx> Codegen<'ctx> {
@@ -20,4 +27,3 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 }
-
