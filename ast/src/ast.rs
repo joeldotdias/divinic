@@ -1,17 +1,13 @@
+use ecow::EcoString;
+
 use crate::span::Span;
 
 pub type NodeId = u32;
-pub type Identifier = String;
+pub type Label = EcoString;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
-    pub decls: Vec<DeclarationOrStmt>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum DeclarationOrStmt {
-    Declaration(Declaration),
-    Stmt(Stmt),
+    pub decls: Vec<Declaration>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -19,14 +15,14 @@ pub enum Declaration {
     Var {
         id: NodeId,
         span: Span,
-        name: Identifier,
+        name: Label,
         ty: Type,
         init: Option<Expr>,
     },
     Func {
         id: NodeId,
         span: Span,
-        name: Identifier,
+        name: Label,
         ret_ty: Type,
         params: Vec<Param>,
         body: Stmt,
@@ -34,13 +30,13 @@ pub enum Declaration {
     Struct {
         id: NodeId,
         span: Span,
-        name: Option<Identifier>,
+        name: Option<Label>,
         fields: Vec<Declaration>, // dumbed down
     },
     Enum {
         id: NodeId,
         span: Span,
-        name: Option<Identifier>,
+        name: Option<Label>,
         variants: Vec<Enumerator>,
     },
 }
@@ -49,7 +45,7 @@ pub enum Declaration {
 pub struct Param {
     pub id: NodeId,
     pub span: Span,
-    pub name: Identifier,
+    pub name: Label,
     pub ty: Type,
 }
 
@@ -57,14 +53,14 @@ pub struct Param {
 pub struct Enumerator {
     pub id: NodeId,
     pub span: Span,
-    pub name: Identifier,
+    pub name: Label,
     pub value: Option<Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     Inbuilt(InbuiltType),
-    Named(Identifier),
+    Named(Label),
     Pointer(Box<Type>),
     Array(Box<Type>, Option<Expr>),
     Function {
@@ -160,7 +156,7 @@ pub enum Expr {
     Ident {
         id: NodeId,
         span: Span,
-        name: Identifier,
+        name: Label,
     },
     Constant {
         id: NodeId,
@@ -196,7 +192,7 @@ pub enum Expr {
         id: NodeId,
         span: Span,
         base: Box<Expr>,
-        field: Identifier,
+        field: Label,
         arrow: bool,
     },
     Index {
@@ -272,7 +268,7 @@ pub enum UnaryOp {
 // helpers
 
 impl Declaration {
-    pub fn var(id: NodeId, span: Span, name: String, ty: Type, init: Option<Expr>) -> Self {
+    pub fn var(id: NodeId, span: Span, name: EcoString, ty: Type, init: Option<Expr>) -> Self {
         Self::Var {
             id,
             span,
@@ -285,7 +281,7 @@ impl Declaration {
     pub fn func(
         id: NodeId,
         span: Span,
-        name: String,
+        name: EcoString,
         ret_ty: Type,
         params: Vec<Param>,
         body: Stmt,
@@ -300,7 +296,12 @@ impl Declaration {
         }
     }
 
-    pub fn strukt(id: NodeId, span: Span, name: Option<String>, fields: Vec<Declaration>) -> Self {
+    pub fn strukt(
+        id: NodeId,
+        span: Span,
+        name: Option<EcoString>,
+        fields: Vec<Declaration>,
+    ) -> Self {
         Self::Struct {
             id,
             span,
@@ -309,7 +310,12 @@ impl Declaration {
         }
     }
 
-    pub fn enumm(id: NodeId, span: Span, name: Option<String>, variants: Vec<Enumerator>) -> Self {
+    pub fn enumm(
+        id: NodeId,
+        span: Span,
+        name: Option<EcoString>,
+        variants: Vec<Enumerator>,
+    ) -> Self {
         Self::Enum {
             id,
             span,
@@ -323,7 +329,7 @@ impl Type {
     pub fn inbuilt(t: InbuiltType) -> Self {
         Self::Inbuilt(t)
     }
-    pub fn named(name: String) -> Self {
+    pub fn named(name: EcoString) -> Self {
         Self::Named(name)
     }
     pub fn pointer(inner: Type) -> Self {
@@ -402,7 +408,7 @@ impl Stmt {
 }
 
 impl Expr {
-    pub fn ident(id: NodeId, span: Span, name: String) -> Self {
+    pub fn ident(id: NodeId, span: Span, name: EcoString) -> Self {
         Self::Ident { id, span, name }
     }
     pub fn constant(id: NodeId, span: Span, value: Constant) -> Self {
@@ -441,7 +447,7 @@ impl Expr {
             args,
         }
     }
-    pub fn member(id: NodeId, span: Span, base: Expr, field: String, arrow: bool) -> Self {
+    pub fn member(id: NodeId, span: Span, base: Expr, field: EcoString, arrow: bool) -> Self {
         Self::Member {
             id,
             span,

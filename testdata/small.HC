@@ -4,7 +4,7 @@ U0 Main() {
         num++;
     } else {
         num = 7;
-    ]
+    }
 
     "num is: %d\n", num
 }
