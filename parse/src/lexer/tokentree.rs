@@ -155,9 +155,9 @@ pub struct UnmatchedDelim {
 #[derive(Debug, Clone)]
 pub struct TokenCursor {
     // current (innermost) token stream
-    curr: TokenTreeCursor,
+    pub curr: TokenTreeCursor,
     // parent token streams we need to return to
-    stack: Vec<TokenTreeCursor>,
+    pub stack: Vec<TokenTreeCursor>,
 }
 
 impl TokenCursor {

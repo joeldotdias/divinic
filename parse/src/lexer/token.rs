@@ -182,6 +182,13 @@ impl Token {
     }
 }
 
+impl PartialEq<TokenKind> for Token {
+    #[inline]
+    fn eq(&self, other: &TokenKind) -> bool {
+        self.kind == *other
+    }
+}
+
 impl TokenKind {
     pub fn open_delim(&self) -> Option<Delimiter> {
         match *self {
