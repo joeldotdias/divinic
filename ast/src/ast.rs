@@ -39,6 +39,11 @@ pub enum Declaration {
         name: Option<Label>,
         variants: Vec<Enumerator>,
     },
+    Include {
+        id: NodeId,
+        name: Label,
+        as_name: Option<EcoString>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
