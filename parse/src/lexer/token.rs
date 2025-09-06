@@ -229,6 +229,22 @@ impl Delimiter {
             Delimiter::Bracket => TokenKind::RBracket,
         }
     }
+
+    pub fn to_open_str(&self) -> &'static str {
+        match self {
+            Delimiter::Parenthesis => "(",
+            Delimiter::Curly => "{",
+            Delimiter::Bracket => "[",
+        }
+    }
+
+    pub fn to_close_str(&self) -> &'static str {
+        match self {
+            Delimiter::Parenthesis => ")",
+            Delimiter::Curly => "}",
+            Delimiter::Bracket => "]",
+        }
+    }
 }
 
 impl Token {

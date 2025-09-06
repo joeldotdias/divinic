@@ -1,13 +1,9 @@
-use std::{fs, io, path::PathBuf};
+use std::{fs, path::PathBuf};
 
-use crate::{
-    diagnostic::DiagCtx,
-    lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor},
-};
+use crate::lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor};
 
 #[derive(Default, Debug)]
 pub struct ParseSess {
-    pub dcx: DiagCtx,
     pub source_files: Vec<SourceFile>,
     pub curr: u16,
 }
@@ -17,7 +13,6 @@ impl ParseSess {
         let source_files = fnames.into_iter().map(|f| SourceFile::from(f)).collect();
 
         ParseSess {
-            dcx: DiagCtx::default(),
             source_files,
             curr: 0,
         }
@@ -27,9 +22,18 @@ impl ParseSess {
         for (i, f) in self.source_files.iter().enumerate() {
             self.curr = i as u16;
 
-            let stream = lex_token_trees(&self, &f.src);
-            let mut cursor = TokenCursor::new(stream);
+            let stream = match lex_token_trees(&self, &f.src) {
+                Ok(ts) => ts,
+                Err(errs) => {
+                    for e in errs {
+                        let (filename, source) = self.src_file(e.loc.fid as usize);
+                        e.report(filename.to_str().unwrap(), source);
+                    }
+                    return;
+                }
+            };
 
+            let mut cursor = TokenCursor::new(stream);
             loop {
                 let token = cursor.next();
                 if matches!(token.kind, TokenKind::Eof) {
@@ -45,10 +49,6 @@ impl ParseSess {
         (f.name.clone(), f.src.as_str())
     }
 }
-
-// pub struct SourceMap {
-//     pub files: Vec<SourceFile>,
-// }
 
 #[derive(Debug)]
 pub struct SourceFile {

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Span {
     pub lo: u32,
@@ -12,19 +14,11 @@ pub const DUMMY_SPAN: Span = Span {
 };
 
 impl Span {
-    pub fn new_from_file(lo: u32, hi: u32, _fid: u16) -> Self {
+    pub fn new(lo: u32, hi: u32, fid: u16) -> Self {
         Span {
             lo,
             len: (hi - lo) as u16,
-            fid: 0,
-        }
-    }
-
-    pub fn new(lo: u32, hi: u32) -> Self {
-        Span {
-            lo,
-            len: (hi - lo) as u16,
-            fid: 0,
+            fid,
         }
     }
 
@@ -35,12 +29,11 @@ impl Span {
             len: new_len,
             fid: 0,
         }
-        // Span::new(self.lo, added.hi())
     }
 
-    pub fn hi(&self) -> u32 {
-        // self.lo + self.len as u32 - 1
-        self.lo + self.len as u32
+    pub fn to_range(&self) -> Range<usize> {
+        let start = self.lo as usize;
+        start..(start + self.len as usize)
     }
 }
 
@@ -55,4 +48,3 @@ impl DelimSpan {
         DelimSpan { open, close }
     }
 }
-

@@ -1,4 +1,3 @@
-pub mod diagnostic;
 pub mod error;
 pub mod lexer;
 pub mod parser;
@@ -15,7 +14,7 @@ mod tests {
     fn it_works() {
         let src = r#"U0 main() { U32 a = 7++; }"#;
         let psess = ParseSess::default();
-        let stream = lex_token_trees(&psess, src);
+        let stream = lex_token_trees(&psess, src).expect("shouldn't have been an error here");
         let mut cursor = TokenCursor::new(stream);
 
         loop {

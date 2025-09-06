@@ -1,5 +1,3 @@
-use std::process::exit;
-
 use ast::span::Span;
 use cursor::{
     Cursor,
@@ -22,7 +20,7 @@ pub mod tokentree;
 pub(crate) fn lex_token_trees<'sesh, 'src>(
     psesh: &'sesh ParseSess,
     source: &'src str,
-) -> TokenStream {
+) -> Result<TokenStream, Vec<LexicalErr>> {
     let cursor = Cursor::new(source);
 
     let mut lexer = Lexer {
@@ -32,30 +30,25 @@ pub(crate) fn lex_token_trees<'sesh, 'src>(
         token: Token::dummy(),
         pos: 0,
         open_delims: Vec::new(),
-        unmacthed_delims: Vec::new(),
+        unmatched_delims: Vec::new(),
         latest_unclosed_span: None,
         errs: Vec::new(),
     };
 
-    let res = lexer.lex_token_trees(false);
+    let lexed = lexer.lex_token_trees(false);
 
-    for e in lexer.errs {
-        let (filename, source) = psesh.src_file(e.loc.fid as usize);
-        e.report(filename.to_str().unwrap(), source);
-        exit(1);
-    }
-
-    match res {
+    match lexed {
         Ok(ts) => {
-            println!("Result:\n{:#?}", ts);
-            ts
-        }
-        Err(errs) => {
-            for e in errs {
-                let (filename, source) = psesh.src_file(e.loc.fid as usize);
-                e.report(filename.to_str().unwrap(), source);
+            if lexer.errs.is_empty() {
+                println!("Result:\n{:#?}", ts);
+                Ok(ts)
+            } else {
+                Err(lexer.errs)
             }
-            exit(1);
+        }
+        Err(mut lex_errs) => {
+            lex_errs.extend(lexer.errs);
+            Err(lex_errs)
         }
     }
 }
@@ -78,13 +71,12 @@ pub struct Lexer<'sesh, 'src> {
     // collecting all the unmatched delimiters found during parsing
     // their reporting are defered for now so we can just bail instead
     // of the parser doesn't blow up at the first unmatched delim
-    pub unmacthed_delims: Vec<UnmatchedDelim>,
+    pub unmatched_delims: Vec<UnmatchedDelim>,
 
     // this is just for error-ing at EOF
     // not sure if this needs to be tracked in state
     // might move this to just a function later
     pub latest_unclosed_span: Option<Span>,
-    // tt_diag: TokenTreeDiagInfo,
     pub errs: Vec<LexicalErr>,
 }
 
@@ -231,6 +223,6 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
     }
 
     fn make_span(&self, lo: u32, hi: u32) -> Span {
-        Span::new_from_file(lo, hi, self.psesh.curr)
+        Span::new(lo, hi, self.psesh.curr)
     }
 }
