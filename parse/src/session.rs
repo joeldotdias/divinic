@@ -1,6 +1,9 @@
 use std::{fs, path::PathBuf};
 
-use crate::lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor};
+use crate::{
+    lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor},
+    parser::Parser,
+};
 
 #[derive(Default, Debug)]
 pub struct ParseSess {
@@ -33,13 +36,20 @@ impl ParseSess {
                 }
             };
 
-            let mut cursor = TokenCursor::new(stream);
-            loop {
-                let token = cursor.next();
-                if matches!(token.kind, TokenKind::Eof) {
-                    break;
-                }
-                println!("{:?}", token);
+            // let mut cursor = TokenCursor::new(stream);
+            // loop {
+            //     let token = cursor.next();
+            //     if matches!(token.kind, TokenKind::Eof) {
+            //         break;
+            //     }
+            //     println!("{:?}", token);
+            // }
+
+            let mut parser = Parser::new(&self, stream);
+            parser.parse_module().unwrap();
+            for e in parser.errs {
+                let (filename, source) = self.src_file(e.loc.fid as usize);
+                e.report(filename.to_str().unwrap(), source);
             }
         }
     }

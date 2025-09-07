@@ -1,3 +1,7 @@
+U32 if(U32 num, U32 j) {
+    return 2;
+}
+
 U0 Main() {
     I64 num = 0;
     if(num == 0) {

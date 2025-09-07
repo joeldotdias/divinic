@@ -102,6 +102,13 @@ pub enum Stmt {
         span: Span,
         stmts: Vec<Stmt>,
     },
+    VarDecl {
+        id: NodeId,
+        span: Span,
+        name: Label,
+        ty: Type,
+        init: Option<Expr>,
+    },
     If {
         id: NodeId,
         span: Span,

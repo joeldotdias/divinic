@@ -31,9 +31,23 @@ impl Span {
         }
     }
 
+    pub fn merge(&self, other: Span) -> Span {
+        let start = self.lo.min(other.lo);
+        let end = self.hi().max(other.hi());
+        Span {
+            lo: start,
+            len: (end - start) as u16,
+            fid: self.fid,
+        }
+    }
+
     pub fn to_range(&self) -> Range<usize> {
         let start = self.lo as usize;
         start..(start + self.len as usize)
+    }
+
+    pub fn hi(&self) -> u32 {
+        self.lo + self.len as u32
     }
 }
 

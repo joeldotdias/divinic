@@ -1,16 +1,18 @@
 use std::mem;
 
-use ast::ast::Module;
+use ast::ast::{Declaration, InbuiltType, Module, Type};
+use ecow::EcoString;
 
 use crate::{
     lexer::{
-        token::{Token, TokenKind},
+        token::{Token, TokenKind, is_reserved_keyword},
         tokentree::{TokenCursor, TokenStream, TokenTree},
     },
-    parser::error::ParseErr,
+    parser::error::{ParseErr, ParseErrKind, mk_parse_err},
     session::ParseSess,
 };
 
+pub mod decls;
 pub mod error;
 
 pub struct Parser<'a> {
@@ -18,8 +20,11 @@ pub struct Parser<'a> {
     curr_tok: Token,
     prev_tok: Token,
     cursor: TokenCursor,
+    pub errs: Vec<ParseErr>,
 }
 
+// this section is just meant to be for the parser building blocks
+// TODO remove ast node specific stuff from this
 impl<'a> Parser<'a> {
     pub fn new(psess: &'a ParseSess, stream: TokenStream) -> Self {
         let mut parser = Parser {
@@ -27,6 +32,7 @@ impl<'a> Parser<'a> {
             curr_tok: Token::dummy(),
             prev_tok: Token::dummy(),
             cursor: TokenCursor::new(stream),
+            errs: Vec::new(),
         };
 
         parser.bump();
@@ -35,44 +41,95 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_module(&mut self) -> Result<Module, ParseErr> {
-        let is_void_ty = self.look_ahead(0, |t| t == &TokenKind::U0);
-        let is_lparen = self.look_ahead(2, |t| t == &TokenKind::LParen);
-        let is_rparen = self.look_ahead(3, |t| t == &TokenKind::RParen);
-        println!("is_u0_ty: {}", is_void_ty);
-        println!("is_lparen: {}", is_lparen);
-        println!("is_rparen: {}", is_rparen);
+        // let is_void_ty = self.look_ahead(0, |t| t == &TokenKind::U0);
+        // let is_lparen = self.look_ahead(2, |t| t == &TokenKind::LParen);
+        // let is_rparen = self.look_ahead(3, |t| t == &TokenKind::RParen);
+        // println!("is_u0_ty: {}", is_void_ty);
+        // println!("is_lparen: {}", is_lparen);
+        // println!("is_rparen: {}", is_rparen);
+        //
+        // self.bump();
+        // println!("After bumping");
+        // let is_lparen_after_bump = self.look_ahead(1, |t| t == &TokenKind::LParen);
+        // println!("is_lparen after bump: {}", is_lparen_after_bump);
+        // self.bump();
+        // self.bump();
+        // self.bump();
+        // println!("After 3 bumps: {:?}", self.curr_tok);
+        // let is_i64_ty = self.look_ahead(1, |t| t == &TokenKind::I64);
+        // println!("is_i64_ty after 3 bumps: {}", is_i64_ty);
 
-        self.bump();
-        println!("After bumping");
-        let is_lparen_after_bump = self.look_ahead(1, |t| t == &TokenKind::LParen);
-        println!("is_lparen after bump: {}", is_lparen_after_bump);
-        self.bump();
-        self.bump();
-        self.bump();
-        println!("After 3 bumps: {:?}", self.curr_tok);
-        let is_i64_ty = self.look_ahead(1, |t| t == &TokenKind::I64);
-        println!("is_i64_ty after 3 bumps: {}", is_i64_ty);
-
-        Ok(Module { decls: Vec::new() })
+        let mut decls = Vec::new();
+        let decl = self.parse_top_level()?;
+        decls.push(decl);
+        Ok(Module { decls })
     }
 
+    pub fn parse_ty(&mut self) -> Result<Type, ParseErr> {
+        use TokenKind::*;
+        let ty = match &self.curr_tok.kind {
+            Ident(label) => Type::Named(label.clone()),
+            U0 => Type::Inbuilt(InbuiltType::U0),
+            U8 => Type::Inbuilt(InbuiltType::U8),
+            U16 => Type::Inbuilt(InbuiltType::U16),
+            U32 => Type::Inbuilt(InbuiltType::U32),
+            U64 => Type::Inbuilt(InbuiltType::U64),
+            I8 => Type::Inbuilt(InbuiltType::I8),
+            I16 => Type::Inbuilt(InbuiltType::I16),
+            I32 => Type::Inbuilt(InbuiltType::I32),
+            I64 => Type::Inbuilt(InbuiltType::I64),
+            F64 => Type::Inbuilt(InbuiltType::F64),
+            Bool => Type::Inbuilt(InbuiltType::Bool),
+            _ => todo!(),
+        };
+        self.bump();
+
+        Ok(ty)
+    }
+
+    // this will ignore the closing separator
     fn series_of<N>(
         &mut self,
-        parse: &impl Fn(&mut Self) -> Result<Option<N>, ParseErr>,
+        subparser: &impl Fn(&mut Self) -> Result<Option<N>, ParseErr>,
         sep: Option<&TokenKind>,
     ) -> Result<Vec<N>, ParseErr> {
-        todo!()
+        let mut parsed = Vec::new();
+
+        loop {
+            match subparser(self)? {
+                Some(node) => parsed.push(node),
+                None => break,
+            }
+
+            if let Some(sep_kind) = sep {
+                if !self.eat_no_expect(sep_kind) {
+                    break;
+                }
+            }
+        }
+
+        Ok(parsed)
     }
 
-    fn series_of_has_trailing_separator<N>(
-        &mut self,
-        parser: &impl Fn(&mut Self) -> Result<Option<N>, ParseErr>,
-        sep: Option<&Token>,
-    ) -> Result<(Vec<N>, bool), ParseErr> {
-        // let mut results = vec![];
-        // let sep_at_end = None;
+    // fn series_of_has_trailing_separator<N>(
+    //     &mut self,
+    //     subparser: &impl Fn(&mut Self) -> Result<Option<N>, ParseErr>,
+    //     sep: Option<&TokenKind>,
+    // ) -> Result<(Vec<N>, bool), ParseErr> {
+    //     let mut results = vec![];
+    //
+    //     while let Some(res) = subparser(self)? {
+    //         results.push(res);
+    //         if let Some(sep) = sep {
+    //             // if let Some(separator) = self.maybe_one(sep) {}
+    //         }
+    //     }
+    //
+    //     todo!()
+    // }
 
-        todo!()
+    fn peek_token(&self) -> TokenKind {
+        self.look_ahead(1, |tok| tok.clone())
     }
 
     pub fn look_ahead<T>(&self, dist: usize, looker: impl FnOnce(&TokenKind) -> T) -> T {
@@ -137,6 +194,73 @@ impl<'a> Parser<'a> {
         // is rather weird but this might need to be used separately
         self.curr_tok == *tok
     }
+
+    fn parse_ident(&mut self) -> Result<EcoString, ParseErr> {
+        self.parse_ident_common(true)
+    }
+
+    fn parse_ident_no_recover(&mut self) -> Result<EcoString, ParseErr> {
+        self.parse_ident_common(false)
+    }
+
+    fn parse_ident_common(&mut self, recover: bool) -> Result<EcoString, ParseErr> {
+        let ident = self.ident_or_err(recover)?;
+
+        if is_reserved_keyword(&ident) {
+            let err = mk_parse_err(
+                ParseErrKind::ReservedKeywordAsIdent { kw: ident.clone() },
+                self.curr_tok.span,
+            );
+
+            println!("Problem {ident}");
+            if recover {
+                self.errs.push(err);
+            } else {
+                // just fail if we shouldn't recover
+                return Err(err);
+            }
+        }
+
+        self.bump();
+        Ok(ident)
+    }
+
+    fn ident_or_err(&mut self, recover: bool) -> Result<EcoString, ParseErr> {
+        match &self.curr_tok.kind {
+            TokenKind::Ident(label) => Ok(label.clone()),
+            _ => self.expected_ident_found(recover),
+        }
+    }
+
+    fn expected_ident_found(&mut self, recover: bool) -> Result<EcoString, ParseErr> {
+        let err = mk_parse_err(
+            ParseErrKind::ExpectedIdent {
+                found: self.curr_tok.kind.clone(),
+                context: "identifier", // TODO improve this non sense
+            },
+            self.curr_tok.span,
+        );
+
+        if recover {
+            let recovered_name = match &self.curr_tok.kind {
+                TokenKind::If => "if",
+                TokenKind::While => "while",
+                TokenKind::For => "for",
+                TokenKind::Return => "return",
+                TokenKind::Break => "break",
+                TokenKind::Continue => "continue",
+
+                _ => "stupidly_named_func",
+            };
+            Ok(recovered_name.into())
+        } else {
+            Err(err)
+        }
+    }
+
+    // fn expected_ident_found_err(&self) -> ParseErr {
+    //     // ParseErrKind::
+    // }
 
     pub fn bump(&mut self) {
         let next = self.cursor.next();

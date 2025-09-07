@@ -1,4 +1,7 @@
-use ast::span::{DUMMY_SPAN, Span};
+use ast::{
+    ast::{InbuiltType, Type},
+    span::{DUMMY_SPAN, Span},
+};
 use ecow::EcoString;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -180,6 +183,14 @@ impl Token {
 
         Some(Token::new(kind, self.span.extend(joint.span)))
     }
+
+    pub fn is_type_tok(&self) -> bool {
+        use TokenKind::*;
+        matches!(
+            self.kind,
+            U0 | U8 | U16 | U32 | U64 | I8 | I16 | I32 | I64 | F64 | Bool | Ident(_)
+        )
+    }
 }
 
 impl PartialEq<TokenKind> for Token {
@@ -256,7 +267,13 @@ impl Delimiter {
 
 impl Token {
     pub fn to_str(&self) -> &'_ str {
-        match &self.kind {
+        self.kind.to_str()
+    }
+}
+
+impl TokenKind {
+    pub fn to_str(&self) -> &'_ str {
+        match &self {
             TokenKind::Ident(s) => s,
             TokenKind::Literal(_) => todo!(),
             TokenKind::LParen => "(",
@@ -265,70 +282,102 @@ impl Token {
             TokenKind::RCurly => ")",
             TokenKind::LBracket => "[",
             TokenKind::RBracket => "]",
-            TokenKind::Plus => todo!(),
-            TokenKind::PlusPlus => todo!(),
-            TokenKind::PlusEq => todo!(),
-            TokenKind::Minus => todo!(),
-            TokenKind::MinusMinus => todo!(),
-            TokenKind::MinusEq => todo!(),
-            TokenKind::Star => todo!(),
-            TokenKind::StarEq => todo!(),
-            TokenKind::Slash => todo!(),
-            TokenKind::SlashEq => todo!(),
-            TokenKind::Percent => todo!(),
-            TokenKind::PercentEq => todo!(),
-            TokenKind::Caret => todo!(),
-            TokenKind::CaretEq => todo!(),
-            TokenKind::Eq => todo!(),
-            TokenKind::EqEq => todo!(),
-            TokenKind::Bang => todo!(),
-            TokenKind::NEq => todo!(),
-            TokenKind::Lt => todo!(),
-            TokenKind::LtEq => todo!(),
-            TokenKind::Gt => todo!(),
-            TokenKind::GtEq => todo!(),
-            TokenKind::And => todo!(),
-            TokenKind::AndEq => todo!(),
-            TokenKind::AndAnd => todo!(),
-            TokenKind::Or => todo!(),
-            TokenKind::OrEq => todo!(),
-            TokenKind::OrOr => todo!(),
-            TokenKind::Tilde => todo!(),
-            TokenKind::Pound => todo!(),
-            TokenKind::Shl => todo!(),
-            TokenKind::ShlEq => todo!(),
-            TokenKind::Shr => todo!(),
-            TokenKind::ShrEq => todo!(),
-            TokenKind::Semi => todo!(),
-            TokenKind::Colon => todo!(),
-            TokenKind::Comma => todo!(),
-            TokenKind::Dot => todo!(),
-            TokenKind::Question => todo!(),
-            TokenKind::Arrow => todo!(),
-            TokenKind::Eof => todo!(),
-            TokenKind::Bool => todo!(),
-            TokenKind::U0 => todo!(),
-            TokenKind::U8 => todo!(),
-            TokenKind::I8 => todo!(),
-            TokenKind::U16 => todo!(),
-            TokenKind::I16 => todo!(),
-            TokenKind::U32 => todo!(),
-            TokenKind::I32 => todo!(),
-            TokenKind::U64 => todo!(),
-            TokenKind::I64 => todo!(),
-            TokenKind::F64 => todo!(),
-            TokenKind::If => todo!(),
-            TokenKind::Else => todo!(),
-            TokenKind::Elif => todo!(),
-            TokenKind::For => todo!(),
-            TokenKind::While => todo!(),
-            TokenKind::Break => todo!(),
-            TokenKind::Continue => todo!(),
-            TokenKind::Return => todo!(),
-            TokenKind::Class => todo!(),
-            TokenKind::Include => todo!(),
-            TokenKind::Define => todo!(),
-            TokenKind::Asm => todo!(),
+            TokenKind::Plus => "+",
+            TokenKind::PlusPlus => "++",
+            TokenKind::PlusEq => "+=",
+            TokenKind::Minus => "-",
+            TokenKind::MinusMinus => "--",
+            TokenKind::MinusEq => "-=",
+            TokenKind::Star => "*",
+            TokenKind::StarEq => "*=",
+            TokenKind::Slash => "/",
+            TokenKind::SlashEq => "/=",
+            TokenKind::Percent => "%",
+            TokenKind::PercentEq => "%=",
+            TokenKind::Caret => "^",
+            TokenKind::CaretEq => "^=",
+            TokenKind::Eq => "=",
+            TokenKind::EqEq => "==",
+            TokenKind::Bang => "!",
+            TokenKind::NEq => "!=",
+            TokenKind::Lt => "<",
+            TokenKind::LtEq => "<=",
+            TokenKind::Gt => ">",
+            TokenKind::GtEq => ">=",
+            TokenKind::And => "&",
+            TokenKind::AndEq => "&=",
+            TokenKind::AndAnd => "&&",
+            TokenKind::Or => "|",
+            TokenKind::OrEq => "|=",
+            TokenKind::OrOr => "||",
+            TokenKind::Tilde => "~",
+            TokenKind::Pound => "#",
+            TokenKind::Shl => "<<",
+            TokenKind::ShlEq => "<<=",
+            TokenKind::Shr => ">>",
+            TokenKind::ShrEq => ">>=",
+            TokenKind::Semi => ";",
+            TokenKind::Colon => ":",
+            TokenKind::Comma => ",",
+            TokenKind::Dot => ".",
+            TokenKind::Question => "?",
+            TokenKind::Arrow => "->",
+            TokenKind::Eof => "EOF",
+            TokenKind::Bool => "Bool",
+            TokenKind::U0 => "U0",
+            TokenKind::U8 => "U8",
+            TokenKind::I8 => "I8",
+            TokenKind::U16 => "U16",
+            TokenKind::I16 => "I16",
+            TokenKind::U32 => "U32",
+            TokenKind::I32 => "I32",
+            TokenKind::U64 => "U64",
+            TokenKind::I64 => "I64",
+            TokenKind::F64 => "F64",
+            TokenKind::If => "if",
+            TokenKind::Else => "else",
+            TokenKind::Elif => "elif",
+            TokenKind::For => "for",
+            TokenKind::While => "while",
+            TokenKind::Break => "break",
+            TokenKind::Continue => "continue",
+            TokenKind::Return => "return",
+            TokenKind::Class => "class",
+            TokenKind::Include => "include",
+            TokenKind::Define => "define",
+            TokenKind::Asm => "asm",
         }
     }
+}
+
+pub fn is_reserved_keyword(s: &str) -> bool {
+    matches!(
+        s,
+        "if" | "else"
+            | "while"
+            | "for"
+            | "do"
+            | "switch"
+            | "case"
+            | "default"
+            | "return"
+            | "break"
+            | "continue"
+            | "class"
+            | "union"
+            | "struct"
+            | "enum"
+            | "U0"
+            | "U8"
+            | "U16"
+            | "U32"
+            | "U64"
+            | "I8"
+            | "I16"
+            | "I32"
+            | "I64"
+            | "F32"
+            | "F64"
+            | "Bool"
+    )
 }

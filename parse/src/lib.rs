@@ -26,6 +26,17 @@ mod tests {
         //     println!("{:?}", token);
         // }
 
+        // let stream = match lex_token_trees(&self, &f.src) {
+        //     Ok(ts) => ts,
+        //     Err(errs) => {
+        //         for e in errs {
+        //             let (filename, source) = self.src_file(e.loc.fid as usize);
+        //             e.report(filename.to_str().unwrap(), source);
+        //         }
+        //         return;
+        //     }
+        // };
+
         let mut parser = Parser::new(&psess, stream);
         parser.parse_module().unwrap();
         assert_eq!(1, 1);

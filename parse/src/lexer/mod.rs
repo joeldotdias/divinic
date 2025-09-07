@@ -152,7 +152,6 @@ impl<'sesh, 'src> Lexer<'sesh, 'src> {
 
     fn ident_or_kw(&self, start: u32) -> TokenKind {
         let label = self.str_from(start);
-        println!("Curr label: {label}");
 
         match label {
             "Bool" => TokenKind::Bool,
