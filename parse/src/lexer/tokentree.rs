@@ -2,12 +2,10 @@ use std::mem;
 
 use ast::span::{DUMMY_SPAN, DelimSpan, Span};
 
-use crate::{
+use crate::lexer::{
+    Lexer,
     error::{LexicalErr, LexicalErrKind, mk_lexical_err},
-    lexer::{
-        Lexer,
-        token::{Delimiter, Token, TokenKind},
-    },
+    token::{Delimiter, Token, TokenKind},
 };
 
 #[derive(Debug, Clone)]

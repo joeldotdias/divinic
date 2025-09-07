@@ -6,14 +6,15 @@ use cursor::{
 use ecow::EcoString;
 
 use crate::{
-    error::{LexicalErr, LexicalErrKind, mk_lexical_err},
     lexer::{
+        error::{LexicalErr, LexicalErrKind, mk_lexical_err},
         token::{Delimiter, LitInner, LitKind, Token, TokenKind},
         tokentree::{TokenStream, UnmatchedDelim},
     },
     session::ParseSess,
 };
 
+pub mod error;
 pub mod token;
 pub mod tokentree;
 
