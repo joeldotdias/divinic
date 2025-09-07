@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use ecow::EcoString;
 use inkwell::{
     AddressSpace, IntPredicate,
@@ -10,13 +8,16 @@ use inkwell::{
     types::{BasicType, BasicTypeEnum, FunctionType, StructType},
     values::{BasicValueEnum, FunctionValue, PointerValue},
 };
+use std::collections::HashMap;
 
-use ast::ast::{BinaryOp, Constant, Declaration, Expr, InbuiltType, Module, Stmt, Type, UnaryOp};
+use crate::hir::{HIRDeclaration, HIRExpr, HIRExprGives, HIRModule, HIRStmt};
+use ast::ast::{BinaryOp, Constant, Expr, InbuiltType, Type, UnaryOp};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Variable<'ctx> {
     ptr: PointerValue<'ctx>,
     element_type: BasicTypeEnum<'ctx>,
+    native_type: Type,
 }
 
 pub struct Codegen<'ctx> {
@@ -61,7 +62,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.print_to_stderr();
     }
 
-    pub fn compile(&mut self, modules: &[Module]) -> Result<(), String> {
+    pub fn compile(&mut self, modules: &[HIRModule]) -> Result<(), String> {
         for m in modules {
             for decl in &m.decls {
                 self.compile_decl(decl)
@@ -71,9 +72,9 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn compile_decl(&mut self, decl: &Declaration) -> Result<(), BuilderError> {
+    fn compile_decl(&mut self, decl: &HIRDeclaration) -> Result<(), BuilderError> {
         match decl {
-            Declaration::Var { name, ty, init, .. } => {
+            HIRDeclaration::Var { name, ty, init, .. } => {
                 let llvm_type = self.to_llvm_basic_type(ty).unwrap();
                 let ptr = if let Some(current_fn) = self.current_function {
                     let entry = current_fn.get_first_basic_block().unwrap();
@@ -92,11 +93,11 @@ impl<'ctx> Codegen<'ctx> {
                     }
                     global.as_pointer_value()
                 };
-                self.insert_var(name.clone(), ptr, llvm_type);
+                self.insert_var(name.clone(), ptr, llvm_type, ty.clone());
                 Ok(())
             }
 
-            Declaration::Func {
+            HIRDeclaration::Func {
                 name,
                 ret_ty,
                 params,
@@ -124,7 +125,7 @@ impl<'ctx> Codegen<'ctx> {
                     llvm_param.set_name(&param.name);
                     let alloca = self.builder.build_alloca(param_types[i], &param.name)?;
                     let _ = self.builder.build_store(alloca, llvm_param);
-                    self.insert_var(param.name.clone(), alloca, param_types[i]);
+                    self.insert_var(param.name.clone(), alloca, param_types[i], param.ty.clone());
                 }
 
                 let prev_fn = self.current_function;
@@ -134,19 +135,18 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(())
             }
 
-            Declaration::Struct { .. } => todo!(),
-            Declaration::Enum { .. } => todo!(),
-            Declaration::Include { .. } => todo!(),
+            HIRDeclaration::Struct { .. } => todo!(),
+            HIRDeclaration::Enum { .. } => todo!(),
+            HIRDeclaration::Include { .. } => Ok(()),
         }
     }
 
-    fn compile_stmt(&mut self, stmt: &Stmt) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+    fn compile_stmt(&mut self, stmt: &HIRStmt) -> Result<BasicValueEnum<'ctx>, BuilderError> {
         match stmt {
-            Stmt::Expr { expr, .. } => self
+            HIRStmt::Expr { expr, .. } => self
                 .compile_expr(expr)
                 .map_err(|_| BuilderError::UnsetPosition),
-
-            Stmt::Block { stmts, .. } => {
+            HIRStmt::Block { stmts, .. } => {
                 self.push_scope();
                 let mut last = self.context.i64_type().const_zero().into();
                 for s in stmts {
@@ -155,13 +155,20 @@ impl<'ctx> Codegen<'ctx> {
                 self.pop_scope();
                 Ok(last)
             }
-
-            Stmt::Return { expr, .. } => {
+            HIRStmt::VarDecl { name, ty, init, .. } => {
+                let llvm_type = self.to_llvm_basic_type(ty).unwrap();
+                let alloca = self.builder.build_alloca(llvm_type, name)?;
+                if let Some(init_expr) = init {
+                    let val = self.compile_expr(init_expr).unwrap();
+                    let _ = self.builder.build_store(alloca, val);
+                }
+                self.insert_var(name.clone(), alloca, llvm_type, ty.clone());
+                Ok(alloca.into())
+            }
+            HIRStmt::Return { expr, .. } => {
                 if let Some(e) = expr {
-                    let val = self
-                        .compile_expr(e)
-                        .map_err(|_| BuilderError::UnsetPosition)?;
-                    if let Some(_f) = self.current_function {
+                    let val = self.compile_expr(e).unwrap();
+                    if self.current_function.is_some() {
                         let _ = self.builder.build_return(Some(&val));
                     }
                 } else {
@@ -169,36 +176,25 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Ok(self.context.i64_type().const_zero().into())
             }
-
-            Stmt::VarDecl { name, ty, init, .. } => {
-                if self.current_function.is_some() {
-                    let llvm_type = self.to_llvm_basic_type(ty).unwrap();
-                    let alloca = self.builder.build_alloca(llvm_type, name)?;
-                    if let Some(init_expr) = init {
-                        let init_val = self
-                            .compile_expr(init_expr)
-                            .map_err(|_| BuilderError::UnsetPosition)?;
-                        let _ = self.builder.build_store(alloca, init_val);
-                    }
-                    self.insert_var(name.clone(), alloca, llvm_type);
-                    Ok(alloca.into())
-                } else {
-                    Err(BuilderError::UnsetPosition)
-                }
+            HIRStmt::If { .. } => {
+                todo!()
             }
-
-            Stmt::If { .. } => todo!(),
-            Stmt::Switch { .. } => todo!(),
-            Stmt::While { .. } => todo!(),
-            Stmt::For { .. } => todo!(),
-            Stmt::Break { .. } => todo!(),
-            Stmt::Continue { .. } => todo!(),
+            HIRStmt::Switch { .. } => {
+                todo!()
+            }
+            HIRStmt::While { .. } => {
+                todo!()
+            }
+            HIRStmt::For { .. } => {
+                todo!()
+            }
+            HIRStmt::Break { .. } | HIRStmt::Continue { .. } => todo!(),
         }
     }
 
-    fn compile_expr(&self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, EcoString> {
+    fn compile_expr(&mut self, expr: &HIRExpr) -> Result<BasicValueEnum<'ctx>, EcoString> {
         match expr {
-            Expr::Ident { name, .. } => {
+            HIRExpr::Ident { name, .. } => {
                 if let Some(var) = self.lookup_var(name) {
                     Ok(self
                         .builder
@@ -208,70 +204,116 @@ impl<'ctx> Codegen<'ctx> {
                     Err(format!("Unknown variable {}", name).into())
                 }
             }
+            HIRExpr::Constant { value, .. } => self.compile_constant(value),
+            HIRExpr::Binary { op, lhs, rhs, .. } => {
+                let l_val = self.compile_expr(lhs)?;
+                let r_val = self.compile_expr(rhs)?;
+                let l_val = self.cast_to_type(l_val, &expr.ty())?;
+                let r_val = self.cast_to_type(r_val, &expr.ty())?;
 
-            Expr::Constant { value, .. } => self.compile_constant(value),
-            Expr::Assign { lhs, rhs, .. } => {
-                if let Expr::Ident { name, .. } = lhs.as_ref() {
-                    let rhs_val = self.compile_expr(rhs).unwrap();
-                    if let Some(var) = self.lookup_var(name) {
-                        let _ = self.builder.build_store(var.ptr, rhs_val);
-                        Ok(rhs_val)
-                    } else {
-                        Err("Undefined variable in assignment".into())
+                match expr.ty() {
+                    Type::Inbuilt(InbuiltType::F64) => {
+                        let res = match op {
+                            BinaryOp::Add => self
+                                .builder
+                                .build_float_add(
+                                    l_val.into_float_value(),
+                                    r_val.into_float_value(),
+                                    "addtmp",
+                                )
+                                .map(|v| v.into()),
+                            BinaryOp::Sub => self
+                                .builder
+                                .build_float_sub(
+                                    l_val.into_float_value(),
+                                    r_val.into_float_value(),
+                                    "subtmp",
+                                )
+                                .map(|v| v.into()),
+                            BinaryOp::Mul => self
+                                .builder
+                                .build_float_mul(
+                                    l_val.into_float_value(),
+                                    r_val.into_float_value(),
+                                    "multmp",
+                                )
+                                .map(|v| v.into()),
+                            BinaryOp::Div => self
+                                .builder
+                                .build_float_div(
+                                    l_val.into_float_value(),
+                                    r_val.into_float_value(),
+                                    "divtmp",
+                                )
+                                .map(|v| v.into()),
+                            BinaryOp::Eq => self
+                                .builder
+                                .build_float_compare(
+                                    inkwell::FloatPredicate::OEQ,
+                                    l_val.into_float_value(),
+                                    r_val.into_float_value(),
+                                    "eqtmp",
+                                )
+                                .map(|v| v.into()),
+                            BinaryOp::Lt => self
+                                .builder
+                                .build_float_compare(
+                                    inkwell::FloatPredicate::OLT,
+                                    l_val.into_float_value(),
+                                    r_val.into_float_value(),
+                                    "lttmp",
+                                )
+                                .map(|v| v.into()),
+                            _ => return Err("Unsupported float binary operator".into()),
+                        }
+                        .map_err(|e| format!("Codegen error: {:?}", e))?;
+
+                        Ok(res)
                     }
-                } else {
-                    Err("Complex lvalue not supported yet".into())
-                }
-            }
-            Expr::Binary { op, lhs, rhs, .. } => {
-                let l = self.compile_expr(lhs)?;
-                let r = self.compile_expr(rhs)?;
-                match op {
-                    BinaryOp::Add => Ok(self
-                        .builder
-                        .build_int_add(l.into_int_value(), r.into_int_value(), "addtmp")
-                        .unwrap()
-                        .into()),
-                    BinaryOp::Sub => Ok(self
-                        .builder
-                        .build_int_sub(l.into_int_value(), r.into_int_value(), "subtmp")
-                        .unwrap()
-                        .into()),
-                    BinaryOp::Mul => Ok(self
-                        .builder
-                        .build_int_mul(l.into_int_value(), r.into_int_value(), "multmp")
-                        .unwrap()
-                        .into()),
-                    BinaryOp::Div => Ok(self
-                        .builder
-                        .build_int_signed_div(l.into_int_value(), r.into_int_value(), "divtmp")
-                        .unwrap()
-                        .into()),
-                    BinaryOp::Eq => Ok(self
-                        .builder
-                        .build_int_compare(
-                            IntPredicate::EQ,
-                            l.into_int_value(),
-                            r.into_int_value(),
-                            "eqtmp",
-                        )
-                        .unwrap()
-                        .into()),
-                    BinaryOp::Lt => Ok(self
-                        .builder
-                        .build_int_compare(
-                            IntPredicate::SLT,
-                            l.into_int_value(),
-                            r.into_int_value(),
-                            "lttmp",
-                        )
-                        .unwrap()
-                        .into()),
-                    _ => Err("Unsupported binary operator".into()),
-                }
-            }
+                    Type::Inbuilt(InbuiltType::I64) | Type::Inbuilt(InbuiltType::I32) => {
+                        let res = match op {
+                            BinaryOp::Add => self.builder.build_int_add(
+                                l_val.into_int_value(),
+                                r_val.into_int_value(),
+                                "addtmp",
+                            ),
+                            BinaryOp::Sub => self.builder.build_int_sub(
+                                l_val.into_int_value(),
+                                r_val.into_int_value(),
+                                "subtmp",
+                            ),
+                            BinaryOp::Mul => self.builder.build_int_mul(
+                                l_val.into_int_value(),
+                                r_val.into_int_value(),
+                                "multmp",
+                            ),
+                            BinaryOp::Div => self.builder.build_int_signed_div(
+                                l_val.into_int_value(),
+                                r_val.into_int_value(),
+                                "divtmp",
+                            ),
+                            BinaryOp::Eq => self.builder.build_int_compare(
+                                IntPredicate::EQ,
+                                l_val.into_int_value(),
+                                r_val.into_int_value(),
+                                "eqtmp",
+                            ),
+                            BinaryOp::Lt => self.builder.build_int_compare(
+                                IntPredicate::SLT,
+                                l_val.into_int_value(),
+                                r_val.into_int_value(),
+                                "lttmp",
+                            ),
+                            _ => return Err("Unsupported integer binary operator".into()),
+                        }
+                        .map_err(|e| format!("Codegen error: {:?}", e))?;
+                        Ok(res.into())
+                    }
 
-            Expr::Unary { op, expr, .. } => {
+                    _ => Err("Unsupported type for binary op".into()),
+                }
+            }
+            HIRExpr::Unary { op, expr, .. } => {
                 let v = self.compile_expr(expr)?;
                 match op {
                     UnaryOp::Minus => Ok(self
@@ -287,38 +329,80 @@ impl<'ctx> Codegen<'ctx> {
                     _ => Err("Unsupported unary operator".into()),
                 }
             }
-
-            Expr::Call { .. } => todo!(),
-            Expr::Member { .. } => todo!(),
-            Expr::Index { .. } => todo!(),
-            Expr::Conditional { .. } => todo!(),
-            Expr::Cast { .. } => todo!(),
-            Expr::Paren { .. } => todo!(),
+            HIRExpr::Assign { lhs, rhs, .. } => {
+                if let HIRExpr::Ident { name, .. } = lhs.as_ref() {
+                    let rhs_val = self.compile_expr(rhs)?;
+                    if let Some(var) = self.lookup_var(name) {
+                        let _ = self.builder.build_store(var.ptr, rhs_val);
+                        Ok(rhs_val)
+                    } else {
+                        Err(format!("Undefined variable {}", name).into())
+                    }
+                } else {
+                    Err("Unsupported lvalue in assignment".into())
+                }
+            }
+            _ => todo!(),
         }
     }
 
     fn compile_constant(&self, constant: &Constant) -> Result<BasicValueEnum<'ctx>, EcoString> {
         let val = match constant {
-            Constant::Int(value) => self
-                .context
-                .i64_type()
-                .const_int(*value as u64, true)
-                .into(),
-            Constant::UInt(value) => self.context.i64_type().const_int(*value, false).into(),
-            Constant::Float(value) => self.context.f64_type().const_float(*value).into(),
-            Constant::Char(value) => self
-                .context
-                .i8_type()
-                .const_int(*value as u64, false)
-                .into(),
-            Constant::Bool(value) => self
+            Constant::Int(v) => self.context.i64_type().const_int(*v as u64, true).into(),
+            Constant::UInt(v) => self.context.i64_type().const_int(*v, false).into(),
+            Constant::Float(v) => self.context.f64_type().const_float(*v).into(),
+            Constant::Char(v) => self.context.i8_type().const_int(*v as u64, false).into(),
+            Constant::Bool(v) => self
                 .context
                 .bool_type()
-                .const_int(if *value { 1 } else { 0 }, false)
+                .const_int(if *v { 1 } else { 0 }, false)
                 .into(),
             Constant::String(_) => return Err("String constants not supported yet".into()),
         };
         Ok(val)
+    }
+
+    fn cast_to_type(
+        &self,
+        value: BasicValueEnum<'ctx>,
+        target_type: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, EcoString> {
+        match (value, target_type) {
+            (
+                BasicValueEnum::IntValue(int_val),
+                Type::Inbuilt(
+                    InbuiltType::I8
+                    | InbuiltType::U8
+                    | InbuiltType::I16
+                    | InbuiltType::U16
+                    | InbuiltType::I32
+                    | InbuiltType::U32
+                    | InbuiltType::I64
+                    | InbuiltType::U64,
+                ),
+            ) => {
+                let target_llvm_type = self.to_llvm_basic_type(target_type)?;
+                Ok(self
+                    .builder
+                    .build_int_cast(int_val, target_llvm_type.into_int_type(), "casttmp")
+                    .unwrap()
+                    .into())
+            }
+
+            (
+                BasicValueEnum::FloatValue(f_val),
+                Type::Inbuilt(InbuiltType::F64 | InbuiltType::F64),
+            ) => {
+                let target_llvm_type = self.to_llvm_basic_type(target_type)?;
+                Ok(self
+                    .builder
+                    .build_float_cast(f_val, target_llvm_type.into_float_type(), "casttmp")
+                    .unwrap()
+                    .into())
+            }
+
+            (val, _) => Ok(val),
+        }
     }
 
     fn to_llvm_type(&self, ty: &Type) -> Result<CodegenType<'ctx>, String> {
@@ -339,13 +423,11 @@ impl<'ctx> Codegen<'ctx> {
                 InbuiltType::F64 => Ok(self.context.f64_type().into()),
                 InbuiltType::Bool => Ok(self.context.bool_type().into()),
             },
-            Type::Named(name) => {
-                if let Some(struct_type) = self.struct_types.get(name) {
-                    Ok(struct_type.as_basic_type_enum())
-                } else {
-                    Err(format!("Unknown named type: {}", name))
-                }
-            }
+            Type::Named(name) => self
+                .struct_types
+                .get(name)
+                .map(|t| t.as_basic_type_enum())
+                .ok_or_else(|| format!("Unknown named type: {}", name)),
             Type::Pointer(_inner) => Ok(self.context.ptr_type(AddressSpace::default()).into()),
             Type::Array(inner, maybe_size_expr) => {
                 let inner_ty = self.to_llvm_basic_type(inner)?;
@@ -359,7 +441,7 @@ impl<'ctx> Codegen<'ctx> {
                             value: Constant::UInt(u),
                             ..
                         } => *u as u32,
-                        _ => return Err("Array size must be constant integer".to_string()),
+                        _ => return Err("Array size must be a constant integer".to_string()),
                     }
                 } else {
                     return Err("Unsized arrays not supported".to_string());
@@ -380,48 +462,46 @@ impl<'ctx> Codegen<'ctx> {
             let param_types: Result<Vec<_>, _> =
                 params.iter().map(|p| self.to_llvm_basic_type(p)).collect();
             let param_types = param_types?;
-
-            let fn_type = match self.to_llvm_type(ret)? {
-                CodegenType::Basic(ret_type) => ret_type.fn_type(
+            match self.to_llvm_type(ret)? {
+                CodegenType::Basic(ret_type) => Ok(ret_type.fn_type(
                     &param_types.iter().map(|t| (*t).into()).collect::<Vec<_>>(),
                     *varargs,
-                ),
+                )),
                 CodegenType::Function(_) => {
-                    return Err("Functions cannot return function types directly".to_string());
+                    Err("Functions cannot return function types directly".to_string())
                 }
-            };
-
-            Ok(fn_type)
+            }
         } else {
             Err("Not a function type".to_string())
         }
     }
 
-    /** helpers **/
-
     fn push_scope(&mut self) {
         self.variables.push(HashMap::new());
     }
-
     fn pop_scope(&mut self) {
         self.variables.pop();
     }
-
     fn insert_var(
         &mut self,
         name: EcoString,
         ptr: PointerValue<'ctx>,
-        element_type: BasicTypeEnum<'ctx>,
+        ty: BasicTypeEnum<'ctx>,
+        native: Type,
     ) {
-        if let Some(scope) = self.variables.last_mut() {
-            scope.insert(name, Variable { ptr, element_type });
-        }
+        self.variables.last_mut().unwrap().insert(
+            name,
+            Variable {
+                ptr,
+                element_type: ty,
+                native_type: native,
+            },
+        );
     }
-
-    fn lookup_var(&self, name: &EcoString) -> Option<Variable<'ctx>> {
+    fn lookup_var(&self, name: &EcoString) -> Option<&Variable<'ctx>> {
         for scope in self.variables.iter().rev() {
-            if let Some(var) = scope.get(name) {
-                return Some(*var);
+            if let Some(v) = scope.get(name) {
+                return Some(v);
             }
         }
         None
