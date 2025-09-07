@@ -2,28 +2,34 @@ use std::collections::HashMap;
 
 use ecow::EcoString;
 use inkwell::{
-    AddressSpace, FloatPredicate, IntPredicate,
+    AddressSpace, IntPredicate,
     builder::{Builder, BuilderError},
     context::Context,
-    debug_info,
     execution_engine::ExecutionEngine,
     module::Module as LLVMModule,
-    types::{BasicType, BasicTypeEnum, FunctionType, PointerType, StructType},
+    types::{BasicType, BasicTypeEnum, FunctionType, StructType},
     values::{BasicValueEnum, FunctionValue, PointerValue},
 };
 
-use ast::ast::{BinaryOp, Constant, Declaration, Expr, InbuiltType, Module, NodeId, Stmt, Type};
+use ast::ast::{BinaryOp, Constant, Declaration, Expr, InbuiltType, Module, Stmt, Type, UnaryOp};
+
+#[derive(Debug, Clone, Copy)]
+struct Variable<'ctx> {
+    ptr: PointerValue<'ctx>,
+    element_type: BasicTypeEnum<'ctx>,
+}
 
 pub struct Codegen<'ctx> {
     context: &'ctx Context,
     module: LLVMModule<'ctx>,
     builder: Builder<'ctx>,
+    #[allow(dead_code)]
     engine: ExecutionEngine<'ctx>,
 
-    pub variables: HashMap<NodeId, PointerValue<'ctx>>,
-    pub functions: HashMap<EcoString, FunctionValue<'ctx>>,
-    pub struct_types: HashMap<EcoString, StructType<'ctx>>,
-    pub current_function: Option<FunctionValue<'ctx>>,
+    variables: Vec<HashMap<EcoString, Variable<'ctx>>>,
+    functions: HashMap<EcoString, FunctionValue<'ctx>>,
+    struct_types: HashMap<EcoString, StructType<'ctx>>,
+    current_function: Option<FunctionValue<'ctx>>,
 }
 
 enum CodegenType<'ctx> {
@@ -44,7 +50,7 @@ impl<'ctx> Codegen<'ctx> {
             module,
             builder,
             engine,
-            variables: HashMap::new(),
+            variables: vec![HashMap::new()],
             functions: HashMap::new(),
             struct_types: HashMap::new(),
             current_function: None,
@@ -67,9 +73,7 @@ impl<'ctx> Codegen<'ctx> {
 
     fn compile_decl(&mut self, decl: &Declaration) -> Result<(), BuilderError> {
         match decl {
-            Declaration::Var {
-                id, name, ty, init, ..
-            } => {
+            Declaration::Var { name, ty, init, .. } => {
                 let llvm_type = self.to_llvm_basic_type(ty).unwrap();
                 let ptr = if let Some(current_fn) = self.current_function {
                     let entry = current_fn.get_first_basic_block().unwrap();
@@ -88,12 +92,11 @@ impl<'ctx> Codegen<'ctx> {
                     }
                     global.as_pointer_value()
                 };
-                self.variables.insert(*id, ptr);
+                self.insert_var(name.clone(), ptr, llvm_type);
                 Ok(())
             }
 
             Declaration::Func {
-                id,
                 name,
                 ret_ty,
                 params,
@@ -109,17 +112,21 @@ impl<'ctx> Codegen<'ctx> {
                     &param_types.iter().map(|t| (*t).into()).collect::<Vec<_>>(),
                     false,
                 );
+
                 let function = self.module.add_function(name, fn_type, None);
                 self.functions.insert(name.clone(), function);
+
                 let entry = self.context.append_basic_block(function, "entry");
                 self.builder.position_at_end(entry);
+
                 for (i, param) in params.iter().enumerate() {
                     let llvm_param = function.get_nth_param(i as u32).unwrap();
                     llvm_param.set_name(&param.name);
                     let alloca = self.builder.build_alloca(param_types[i], &param.name)?;
                     let _ = self.builder.build_store(alloca, llvm_param);
-                    self.variables.insert(param.id, alloca);
+                    self.insert_var(param.name.clone(), alloca, param_types[i]);
                 }
+
                 let prev_fn = self.current_function;
                 self.current_function = Some(function);
                 self.compile_stmt(body)?;
@@ -140,10 +147,12 @@ impl<'ctx> Codegen<'ctx> {
                 .map_err(|_| BuilderError::UnsetPosition),
 
             Stmt::Block { stmts, .. } => {
+                self.push_scope();
                 let mut last = self.context.i64_type().const_zero().into();
                 for s in stmts {
                     last = self.compile_stmt(s)?;
                 }
+                self.pop_scope();
                 Ok(last)
             }
 
@@ -161,10 +170,8 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(self.context.i64_type().const_zero().into())
             }
 
-            Stmt::VarDecl {
-                id, name, ty, init, ..
-            } => {
-                if let Some(_f) = self.current_function {
+            Stmt::VarDecl { name, ty, init, .. } => {
+                if self.current_function.is_some() {
                     let llvm_type = self.to_llvm_basic_type(ty).unwrap();
                     let alloca = self.builder.build_alloca(llvm_type, name)?;
                     if let Some(init_expr) = init {
@@ -173,7 +180,7 @@ impl<'ctx> Codegen<'ctx> {
                             .map_err(|_| BuilderError::UnsetPosition)?;
                         let _ = self.builder.build_store(alloca, init_val);
                     }
-                    self.variables.insert(*id, alloca);
+                    self.insert_var(name.clone(), alloca, llvm_type);
                     Ok(alloca.into())
                 } else {
                     Err(BuilderError::UnsetPosition)
@@ -191,13 +198,23 @@ impl<'ctx> Codegen<'ctx> {
 
     fn compile_expr(&self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, EcoString> {
         match expr {
-            Expr::Ident { .. } => todo!(),
+            Expr::Ident { name, .. } => {
+                if let Some(var) = self.lookup_var(name) {
+                    Ok(self
+                        .builder
+                        .build_load(var.element_type, var.ptr, "loadtmp")
+                        .unwrap())
+                } else {
+                    Err(format!("Unknown variable {}", name).into())
+                }
+            }
+
             Expr::Constant { value, .. } => self.compile_constant(value),
             Expr::Assign { lhs, rhs, .. } => {
-                if let Expr::Ident { id, .. } = lhs.as_ref() {
-                    let rhs_val = self.compile_expr(rhs)?;
-                    if let Some(var_ptr) = self.variables.get(id) {
-                        let _ = self.builder.build_store(*var_ptr, rhs_val);
+                if let Expr::Ident { name, .. } = lhs.as_ref() {
+                    let rhs_val = self.compile_expr(rhs).unwrap();
+                    if let Some(var) = self.lookup_var(name) {
+                        let _ = self.builder.build_store(var.ptr, rhs_val);
                         Ok(rhs_val)
                     } else {
                         Err("Undefined variable in assignment".into())
@@ -206,8 +223,71 @@ impl<'ctx> Codegen<'ctx> {
                     Err("Complex lvalue not supported yet".into())
                 }
             }
-            Expr::Binary { .. } => todo!(),
-            Expr::Unary { .. } => todo!(),
+            Expr::Binary { op, lhs, rhs, .. } => {
+                let l = self.compile_expr(lhs)?;
+                let r = self.compile_expr(rhs)?;
+                match op {
+                    BinaryOp::Add => Ok(self
+                        .builder
+                        .build_int_add(l.into_int_value(), r.into_int_value(), "addtmp")
+                        .unwrap()
+                        .into()),
+                    BinaryOp::Sub => Ok(self
+                        .builder
+                        .build_int_sub(l.into_int_value(), r.into_int_value(), "subtmp")
+                        .unwrap()
+                        .into()),
+                    BinaryOp::Mul => Ok(self
+                        .builder
+                        .build_int_mul(l.into_int_value(), r.into_int_value(), "multmp")
+                        .unwrap()
+                        .into()),
+                    BinaryOp::Div => Ok(self
+                        .builder
+                        .build_int_signed_div(l.into_int_value(), r.into_int_value(), "divtmp")
+                        .unwrap()
+                        .into()),
+                    BinaryOp::Eq => Ok(self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            l.into_int_value(),
+                            r.into_int_value(),
+                            "eqtmp",
+                        )
+                        .unwrap()
+                        .into()),
+                    BinaryOp::Lt => Ok(self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::SLT,
+                            l.into_int_value(),
+                            r.into_int_value(),
+                            "lttmp",
+                        )
+                        .unwrap()
+                        .into()),
+                    _ => Err("Unsupported binary operator".into()),
+                }
+            }
+
+            Expr::Unary { op, expr, .. } => {
+                let v = self.compile_expr(expr)?;
+                match op {
+                    UnaryOp::Minus => Ok(self
+                        .builder
+                        .build_int_neg(v.into_int_value(), "negtmp")
+                        .unwrap()
+                        .into()),
+                    UnaryOp::LogNot => Ok(self
+                        .builder
+                        .build_not(v.into_int_value(), "nottmp")
+                        .unwrap()
+                        .into()),
+                    _ => Err("Unsupported unary operator".into()),
+                }
+            }
+
             Expr::Call { .. } => todo!(),
             Expr::Member { .. } => todo!(),
             Expr::Index { .. } => todo!(),
@@ -315,5 +395,35 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             Err("Not a function type".to_string())
         }
+    }
+
+    /** helpers **/
+
+    fn push_scope(&mut self) {
+        self.variables.push(HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.variables.pop();
+    }
+
+    fn insert_var(
+        &mut self,
+        name: EcoString,
+        ptr: PointerValue<'ctx>,
+        element_type: BasicTypeEnum<'ctx>,
+    ) {
+        if let Some(scope) = self.variables.last_mut() {
+            scope.insert(name, Variable { ptr, element_type });
+        }
+    }
+
+    fn lookup_var(&self, name: &EcoString) -> Option<Variable<'ctx>> {
+        for scope in self.variables.iter().rev() {
+            if let Some(var) = scope.get(name) {
+                return Some(*var);
+            }
+        }
+        None
     }
 }

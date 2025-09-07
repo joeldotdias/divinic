@@ -4,7 +4,7 @@ pub mod codegen;
 mod tests {
     use crate::codegen::Codegen;
     use ast::{
-        ast::{Constant, Declaration, Expr, InbuiltType, Module, NodeId, Stmt, Type},
+        ast::{BinaryOp, Constant, Declaration, Expr, InbuiltType, Module, NodeId, Stmt, Type},
         span::DUMMY_SPAN,
     };
     use ecow::EcoString;
@@ -59,6 +59,57 @@ mod tests {
 
         codegen.compile(&[module]).expect("Compilation failed");
 
+        codegen.dump_ir();
+    }
+
+    #[test]
+    fn test_i8_add2_function() {
+        let context = Context::create();
+        let mut codegen = crate::codegen::Codegen::new(&context, &EcoString::from("test_module"))
+            .expect("Failed to create Codegen");
+
+        // Function: I8 add2(I8 x) { I8 y = x + 2; }
+        let func = Declaration::Func {
+            id: 1,
+            span: DUMMY_SPAN,
+            name: EcoString::from("add2"),
+            ret_ty: Type::Inbuilt(InbuiltType::I8),
+            params: vec![ast::ast::Param {
+                id: 10,
+                span: DUMMY_SPAN,
+                name: EcoString::from("x"),
+                ty: Type::Inbuilt(InbuiltType::I8),
+            }],
+            body: Stmt::Block {
+                id: 2,
+                span: DUMMY_SPAN,
+                stmts: vec![Stmt::VarDecl {
+                    id: 3,
+                    span: DUMMY_SPAN,
+                    name: EcoString::from("y"),
+                    ty: Type::Inbuilt(InbuiltType::I8),
+                    init: Some(Expr::Binary {
+                        id: 4,
+                        span: DUMMY_SPAN,
+                        op: BinaryOp::Add,
+                        lhs: Box::new(Expr::Ident {
+                            id: 5,
+                            span: DUMMY_SPAN,
+                            name: EcoString::from("x"),
+                        }),
+                        rhs: Box::new(Expr::Constant {
+                            id: 6,
+                            span: DUMMY_SPAN,
+                            value: Constant::Int(2),
+                        }),
+                    }),
+                }],
+            },
+        };
+
+        let module = Module { decls: vec![func] };
+
+        codegen.compile(&[module]).expect("Compilation failed");
         codegen.dump_ir();
     }
 }
