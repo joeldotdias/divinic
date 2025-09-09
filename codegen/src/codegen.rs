@@ -4,9 +4,9 @@ use inkwell::{
     builder::{Builder, BuilderError},
     context::Context,
     execution_engine::ExecutionEngine,
-    module::Module as LLVMModule,
-    types::{BasicType, BasicTypeEnum, FunctionType, StructType},
-    values::{BasicValueEnum, FunctionValue, PointerValue},
+    module::Module as InkModule,
+    types::{BasicType, BasicTypeEnum, StructType},
+    values::{BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
 use std::collections::HashMap;
 
@@ -22,7 +22,7 @@ struct Variable<'ctx> {
 
 pub struct Codegen<'ctx> {
     context: &'ctx Context,
-    module: LLVMModule<'ctx>,
+    module: InkModule<'ctx>,
     builder: Builder<'ctx>,
     #[allow(dead_code)]
     engine: ExecutionEngine<'ctx>,
@@ -33,13 +33,8 @@ pub struct Codegen<'ctx> {
     current_function: Option<FunctionValue<'ctx>>,
 }
 
-enum CodegenType<'ctx> {
-    Basic(BasicTypeEnum<'ctx>),
-    Function(FunctionType<'ctx>),
-}
-
 impl<'ctx> Codegen<'ctx> {
-    pub fn new(context: &'ctx Context, name: &EcoString) -> Result<Self, String> {
+    pub fn new(context: &'ctx Context, name: &EcoString) -> Result<Self, EcoString> {
         let module = context.create_module(name);
         let builder = context.create_builder();
         let engine = module
@@ -86,8 +81,9 @@ impl<'ctx> Codegen<'ctx> {
                         self.module
                             .add_global(llvm_type, Some(AddressSpace::default()), name);
                     if let Some(init_expr) = init {
-                        let val = self.compile_expr(init_expr).unwrap();
-                        global.set_initializer(&val);
+                        let val = self.compile_const_expr(init_expr).unwrap();
+                        let casted = self.cast_to_type(val, ty).unwrap();
+                        global.set_initializer(&casted);
                     } else {
                         global.set_initializer(&llvm_type.const_zero());
                     }
@@ -130,7 +126,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 let prev_fn = self.current_function;
                 self.current_function = Some(function);
-                self.compile_stmt(body)?;
+                self.compile_stmt(body).unwrap();
                 self.current_function = prev_fn;
                 Ok(())
             }
@@ -141,54 +137,78 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn compile_stmt(&mut self, stmt: &HIRStmt) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+    pub fn compile_stmt(&mut self, stmt: &HIRStmt) -> Result<(), EcoString> {
         match stmt {
-            HIRStmt::Expr { expr, .. } => self
-                .compile_expr(expr)
-                .map_err(|_| BuilderError::UnsetPosition),
+            HIRStmt::Expr { expr, .. } => {
+                let _ = self.compile_expr(expr)?;
+                Ok(())
+            }
+
             HIRStmt::Block { stmts, .. } => {
                 self.push_scope();
-                let mut last = self.context.i64_type().const_zero().into();
                 for s in stmts {
-                    last = self.compile_stmt(s)?;
+                    self.compile_stmt(s)?;
                 }
                 self.pop_scope();
-                Ok(last)
+                Ok(())
             }
+
             HIRStmt::VarDecl { name, ty, init, .. } => {
-                let llvm_type = self.to_llvm_basic_type(ty).unwrap();
-                let alloca = self.builder.build_alloca(llvm_type, name)?;
-                if let Some(init_expr) = init {
-                    let val = self.compile_expr(init_expr).unwrap();
-                    let _ = self.builder.build_store(alloca, val);
+                let llvm_type = self.to_llvm_basic_type(ty)?;
+
+                let alloca = if let Some(current_fn) = self.current_function {
+                    let entry = current_fn
+                        .get_first_basic_block()
+                        .unwrap_or_else(|| self.context.append_basic_block(current_fn, "entry"));
+                    let entry_builder = self.context.create_builder();
+                    entry_builder.position_at_end(entry);
+                    entry_builder.build_alloca(llvm_type, name)
+                } else {
+                    self.builder.build_alloca(llvm_type, name)
                 }
+                .unwrap();
+
+                if let Some(init_expr) = init {
+                    let val = self.compile_expr(init_expr)?;
+                    let casted = self.cast_to_type(val, ty)?;
+                    let _ = self.builder.build_store(alloca, casted);
+                }
+
                 self.insert_var(name.clone(), alloca, llvm_type, ty.clone());
-                Ok(alloca.into())
+                Ok(())
             }
+
             HIRStmt::Return { expr, .. } => {
                 if let Some(e) = expr {
-                    let val = self.compile_expr(e).unwrap();
-                    if self.current_function.is_some() {
-                        let _ = self.builder.build_return(Some(&val));
+                    let val = self.compile_expr(e)?;
+                    if self.current_function.is_none() {
+                        return Err("return outside function".into());
                     }
+                    let _ = self.builder.build_return(Some(&val));
                 } else {
+                    if self.current_function.is_none() {
+                        return Err("return outside function".into());
+                    }
                     let _ = self.builder.build_return(None);
                 }
-                Ok(self.context.i64_type().const_zero().into())
+                Ok(())
             }
-            HIRStmt::If { .. } => {
-                todo!()
-            }
-            HIRStmt::Switch { .. } => {
-                todo!()
-            }
-            HIRStmt::While { .. } => {
-                todo!()
-            }
-            HIRStmt::For { .. } => {
-                todo!()
-            }
-            HIRStmt::Break { .. } | HIRStmt::Continue { .. } => todo!(),
+
+            HIRStmt::If {
+                cond,
+                then_branch,
+                ladder,
+                else_branch,
+                ..
+            } => self.compile_if(cond, then_branch, ladder, else_branch),
+
+            HIRStmt::Switch { .. } => todo!(),
+            HIRStmt::While { .. } => todo!(),
+
+            HIRStmt::For { .. } => todo!(),
+
+            HIRStmt::Break { .. } => todo!(),
+            HIRStmt::Continue { .. } => todo!(),
         }
     }
 
@@ -333,7 +353,8 @@ impl<'ctx> Codegen<'ctx> {
                 if let HIRExpr::Ident { name, .. } = lhs.as_ref() {
                     let rhs_val = self.compile_expr(rhs)?;
                     if let Some(var) = self.lookup_var(name) {
-                        let _ = self.builder.build_store(var.ptr, rhs_val);
+                        let casted = self.cast_to_type(rhs_val, &var.native_type)?;
+                        let _ = self.builder.build_store(var.ptr, casted);
                         Ok(rhs_val)
                     } else {
                         Err(format!("Undefined variable {}", name).into())
@@ -344,6 +365,125 @@ impl<'ctx> Codegen<'ctx> {
             }
             _ => todo!(),
         }
+    }
+
+    fn compile_const_expr(&self, expr: &HIRExpr) -> Result<BasicValueEnum<'ctx>, EcoString> {
+        use ast::ast::Constant;
+        match expr {
+            HIRExpr::Constant { value, .. } => match value {
+                Constant::Int(i) => Ok(self.context.i32_type().const_int(*i as u64, true).into()),
+                Constant::Float(f) => Ok(self.context.f64_type().const_float(*f).into()),
+                Constant::Bool(b) => {
+                    Ok(self.context.bool_type().const_int(*b as u64, false).into())
+                }
+                _ => Err("unsupported const initializer".into()),
+            },
+            _ => Err("non-constant initializer for global".into()),
+        }
+    }
+
+    fn compile_condition(&mut self, expr: &HIRExpr) -> Result<IntValue<'ctx>, EcoString> {
+        let val = self.compile_expr(expr)?;
+        match val {
+            BasicValueEnum::IntValue(iv) => {
+                if iv.get_type().get_bit_width() == 1 {
+                    Ok(iv)
+                } else {
+                    let zero = iv.get_type().const_int(0, false);
+                    let cmp = self
+                        .builder
+                        .build_int_compare(IntPredicate::NE, iv, zero, "ifcond");
+                    Ok(cmp.unwrap())
+                }
+            }
+            BasicValueEnum::FloatValue(fv) => {
+                let zero = self.context.f64_type().const_float(0.0);
+                let cmp = self
+                    .builder
+                    .build_float_compare(inkwell::FloatPredicate::ONE, fv, zero, "ifcondf")
+                    .unwrap();
+                Ok(cmp)
+            }
+            _ => Err("condition must be integer or float (or bool)".into()),
+        }
+    }
+
+    fn compile_if(
+        &mut self,
+        cond: &HIRExpr,
+        then_branch: &HIRStmt,
+        ladder: &[(HIRExpr, HIRStmt)],
+        else_branch: &Option<Box<HIRStmt>>,
+    ) -> Result<(), EcoString> {
+        let parent_fn = self.current_function.ok_or_else(|| "if outside function")?;
+
+        let merge_bb = self.context.append_basic_block(parent_fn, "ifcont");
+
+        let then_bb = self.context.append_basic_block(parent_fn, "if.then");
+        let mut next_bb = self.context.append_basic_block(parent_fn, "if.next");
+
+        let cond_val = self.compile_condition(cond)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(cond_val, then_bb, next_bb);
+
+        self.builder.position_at_end(then_bb);
+        self.compile_stmt(then_branch).unwrap();
+        if self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_terminator())
+            .is_none()
+        {
+            let _ = self.builder.build_unconditional_branch(merge_bb);
+        }
+
+        for (i, (ladder_cond, ladder_stmt)) in ladder.iter().enumerate() {
+            let this_then = self
+                .context
+                .append_basic_block(parent_fn, &format!("elseif{}.then", i));
+            let this_next = self
+                .context
+                .append_basic_block(parent_fn, &format!("elseif{}.next", i));
+
+            self.builder.position_at_end(next_bb);
+
+            let cond_val = self.compile_condition(ladder_cond)?;
+            let _ = self
+                .builder
+                .build_conditional_branch(cond_val, this_then, this_next);
+
+            self.builder.position_at_end(this_then);
+            self.compile_stmt(ladder_stmt).unwrap();
+            if self
+                .builder
+                .get_insert_block()
+                .and_then(|b| b.get_terminator())
+                .is_none()
+            {
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+            }
+
+            next_bb = this_next;
+        }
+
+        self.builder.position_at_end(next_bb);
+        if let Some(else_stmt) = else_branch {
+            self.compile_stmt(else_stmt).unwrap();
+            if self
+                .builder
+                .get_insert_block()
+                .and_then(|b| b.get_terminator())
+                .is_none()
+            {
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+            }
+        } else {
+            let _ = self.builder.build_unconditional_branch(merge_bb);
+        }
+
+        self.builder.position_at_end(merge_bb);
+        Ok(())
     }
 
     fn compile_constant(&self, constant: &Constant) -> Result<BasicValueEnum<'ctx>, EcoString> {
@@ -367,55 +507,66 @@ impl<'ctx> Codegen<'ctx> {
         value: BasicValueEnum<'ctx>,
         target_type: &Type,
     ) -> Result<BasicValueEnum<'ctx>, EcoString> {
-        match (value, target_type) {
-            (
-                BasicValueEnum::IntValue(int_val),
-                Type::Inbuilt(
-                    InbuiltType::I8
-                    | InbuiltType::U8
-                    | InbuiltType::I16
-                    | InbuiltType::U16
-                    | InbuiltType::I32
-                    | InbuiltType::U32
-                    | InbuiltType::I64
-                    | InbuiltType::U64,
-                ),
-            ) => {
-                let target_llvm_type = self.to_llvm_basic_type(target_type)?;
-                Ok(self
-                    .builder
-                    .build_int_cast(int_val, target_llvm_type.into_int_type(), "casttmp")
-                    .unwrap()
-                    .into())
+        let target_llvm = self.to_llvm_basic_type(target_type)?;
+
+        match (value, target_llvm) {
+            (val, target) if val.get_type() == target => Ok(val),
+
+            (BasicValueEnum::IntValue(iv), BasicTypeEnum::IntType(target_int)) => Ok(self
+                .builder
+                .build_int_cast(iv, target_int, "casttmp")
+                .unwrap()
+                .into()),
+
+            (BasicValueEnum::FloatValue(fv), BasicTypeEnum::FloatType(target_float)) => Ok(self
+                .builder
+                .build_float_cast(fv, target_float, "casttmp")
+                .unwrap()
+                .into()),
+
+            (BasicValueEnum::IntValue(iv), BasicTypeEnum::FloatType(target_float)) => {
+                let is_signed = matches!(
+                    target_type,
+                    Type::Inbuilt(
+                        InbuiltType::I8 | InbuiltType::I16 | InbuiltType::I32 | InbuiltType::I64
+                    )
+                );
+                let cast = if is_signed {
+                    self.builder
+                        .build_signed_int_to_float(iv, target_float, "casttmp")
+                } else {
+                    self.builder
+                        .build_unsigned_int_to_float(iv, target_float, "casttmp")
+                };
+                Ok(cast.unwrap().into())
             }
 
-            (
-                BasicValueEnum::FloatValue(f_val),
-                Type::Inbuilt(InbuiltType::F64 | InbuiltType::F64),
-            ) => {
-                let target_llvm_type = self.to_llvm_basic_type(target_type)?;
-                Ok(self
-                    .builder
-                    .build_float_cast(f_val, target_llvm_type.into_float_type(), "casttmp")
-                    .unwrap()
-                    .into())
+            (BasicValueEnum::FloatValue(fv), BasicTypeEnum::IntType(target_int)) => {
+                let is_signed = matches!(
+                    target_type,
+                    Type::Inbuilt(
+                        InbuiltType::I8 | InbuiltType::I16 | InbuiltType::I32 | InbuiltType::I64
+                    )
+                );
+                let cast = if is_signed {
+                    self.builder
+                        .build_float_to_signed_int(fv, target_int, "casttmp")
+                } else {
+                    self.builder
+                        .build_float_to_unsigned_int(fv, target_int, "casttmp")
+                };
+                Ok(cast.unwrap().into())
             }
 
+            // fallback
             (val, _) => Ok(val),
         }
     }
 
-    fn to_llvm_type(&self, ty: &Type) -> Result<CodegenType<'ctx>, String> {
-        match ty {
-            Type::Function { .. } => Ok(CodegenType::Function(self.to_llvm_function_type(ty)?)),
-            _ => Ok(CodegenType::Basic(self.to_llvm_basic_type(ty)?)),
-        }
-    }
-
-    fn to_llvm_basic_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
+    fn to_llvm_basic_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, EcoString> {
         match ty {
             Type::Inbuilt(i) => match i {
-                InbuiltType::U0 => Err("U0/void is not a basic type".to_string()),
+                InbuiltType::U0 => Err("U0/void is not a basic type".into()),
                 InbuiltType::U8 | InbuiltType::I8 => Ok(self.context.i8_type().into()),
                 InbuiltType::U16 | InbuiltType::I16 => Ok(self.context.i16_type().into()),
                 InbuiltType::U32 | InbuiltType::I32 => Ok(self.context.i32_type().into()),
@@ -427,7 +578,7 @@ impl<'ctx> Codegen<'ctx> {
                 .struct_types
                 .get(name)
                 .map(|t| t.as_basic_type_enum())
-                .ok_or_else(|| format!("Unknown named type: {}", name)),
+                .ok_or_else(|| format!("Unknown named type: {}", name).into()),
             Type::Pointer(_inner) => Ok(self.context.ptr_type(AddressSpace::default()).into()),
             Type::Array(inner, maybe_size_expr) => {
                 let inner_ty = self.to_llvm_basic_type(inner)?;
@@ -441,38 +592,14 @@ impl<'ctx> Codegen<'ctx> {
                             value: Constant::UInt(u),
                             ..
                         } => *u as u32,
-                        _ => return Err("Array size must be a constant integer".to_string()),
+                        _ => return Err("Array size must be a constant integer".into()),
                     }
                 } else {
-                    return Err("Unsized arrays not supported".to_string());
+                    return Err("Unsized arrays not supported".into());
                 };
                 Ok(inner_ty.array_type(size).into())
             }
-            Type::Function { .. } => Err("Function types are not basic types".to_string()),
-        }
-    }
-
-    fn to_llvm_function_type(&self, ty: &Type) -> Result<FunctionType<'ctx>, String> {
-        if let Type::Function {
-            params,
-            ret,
-            varargs,
-        } = ty
-        {
-            let param_types: Result<Vec<_>, _> =
-                params.iter().map(|p| self.to_llvm_basic_type(p)).collect();
-            let param_types = param_types?;
-            match self.to_llvm_type(ret)? {
-                CodegenType::Basic(ret_type) => Ok(ret_type.fn_type(
-                    &param_types.iter().map(|t| (*t).into()).collect::<Vec<_>>(),
-                    *varargs,
-                )),
-                CodegenType::Function(_) => {
-                    Err("Functions cannot return function types directly".to_string())
-                }
-            }
-        } else {
-            Err("Not a function type".to_string())
+            Type::Function { .. } => Err("Function types are not basic types".into()),
         }
     }
 

@@ -574,7 +574,7 @@ fn infer_stmt(stmt: &mut HIRStmt, locals: &mut SymTable, globals: &SymTable) {
         HIRStmt::VarDecl { name, ty, init, .. } => {
             if let Some(e) = init {
                 infer_expr(e, locals);
-                *ty = e.ty();
+                // *ty = e.ty();
             }
             locals.insert(name.clone(), SymEntry { ty: ty.clone() });
         }

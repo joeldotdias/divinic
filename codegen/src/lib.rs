@@ -176,4 +176,127 @@ mod tests {
         codegen.compile(&hir_modules).expect("Compilation failed");
         codegen.dump_ir();
     }
+    #[test]
+    fn test_if_statement_in_main() {
+        let context = Context::create();
+        let mut codegen = crate::codegen::Codegen::new(&context, &EcoString::from("test_module"))
+            .expect("Failed to create Codegen");
+
+        // I32 main() {
+        //   I32 x = 0;
+        //   if (x == 0) {
+        //       x = 42;
+        //   } else {
+        //       x = 99;
+        //   }
+        //   return x;
+        // }
+
+        let func = Declaration::Func {
+            id: 1,
+            span: DUMMY_SPAN,
+            name: EcoString::from("main"),
+            ret_ty: Type::Inbuilt(InbuiltType::I32),
+            params: vec![],
+            body: Stmt::Block {
+                id: 2,
+                span: DUMMY_SPAN,
+                stmts: vec![
+                    // I32 x = 0;
+                    Stmt::VarDecl {
+                        id: 3,
+                        span: DUMMY_SPAN,
+                        name: EcoString::from("x"),
+                        ty: Type::Inbuilt(InbuiltType::I32),
+                        init: Some(Expr::Constant {
+                            id: 4,
+                            span: DUMMY_SPAN,
+                            value: Constant::Int(0),
+                        }),
+                    },
+                    // if (x == 0) { x = 42; } else { x = 99; }
+                    Stmt::If {
+                        id: 5,
+                        span: DUMMY_SPAN,
+                        cond: Expr::Binary {
+                            id: 6,
+                            span: DUMMY_SPAN,
+                            op: BinaryOp::Eq,
+                            lhs: Box::new(Expr::Ident {
+                                id: 7,
+                                span: DUMMY_SPAN,
+                                name: EcoString::from("x"),
+                            }),
+                            rhs: Box::new(Expr::Constant {
+                                id: 8,
+                                span: DUMMY_SPAN,
+                                value: Constant::Int(0),
+                            }),
+                        },
+                        then_branch: Box::new(Stmt::Block {
+                            id: 9,
+                            span: DUMMY_SPAN,
+                            stmts: vec![Stmt::Expr {
+                                id: 10,
+                                span: DUMMY_SPAN,
+                                expr: Expr::Assign {
+                                    id: 11,
+                                    span: DUMMY_SPAN,
+                                    lhs: Box::new(Expr::Ident {
+                                        id: 12,
+                                        span: DUMMY_SPAN,
+                                        name: EcoString::from("x"),
+                                    }),
+                                    rhs: Box::new(Expr::Constant {
+                                        id: 13,
+                                        span: DUMMY_SPAN,
+                                        value: Constant::Int(42),
+                                    }),
+                                },
+                            }],
+                        }),
+                        ladder: vec![],
+                        else_branch: Some(Box::new(Stmt::Block {
+                            id: 14,
+                            span: DUMMY_SPAN,
+                            stmts: vec![Stmt::Expr {
+                                id: 15,
+                                span: DUMMY_SPAN,
+                                expr: Expr::Assign {
+                                    id: 16,
+                                    span: DUMMY_SPAN,
+                                    lhs: Box::new(Expr::Ident {
+                                        id: 17,
+                                        span: DUMMY_SPAN,
+                                        name: EcoString::from("x"),
+                                    }),
+                                    rhs: Box::new(Expr::Constant {
+                                        id: 18,
+                                        span: DUMMY_SPAN,
+                                        value: Constant::Int(99),
+                                    }),
+                                },
+                            }],
+                        })),
+                    },
+                    // return x;
+                    Stmt::Return {
+                        id: 19,
+                        span: DUMMY_SPAN,
+                        expr: Some(Expr::Ident {
+                            id: 20,
+                            span: DUMMY_SPAN,
+                            name: EcoString::from("x"),
+                        }),
+                    },
+                ],
+            },
+        };
+
+        let module = Module { decls: vec![func] };
+        let mut hir_modules = ast_to_hir(vec![module]);
+        infer_types(&mut hir_modules);
+        codegen.compile(&hir_modules).expect("Compilation failed");
+        codegen.dump_ir();
+    }
 }
