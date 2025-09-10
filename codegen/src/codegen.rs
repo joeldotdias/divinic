@@ -5,7 +5,7 @@ use inkwell::{
     context::Context,
     execution_engine::ExecutionEngine,
     module::Module as InkModule,
-    types::{BasicType, BasicTypeEnum, StructType},
+    types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType},
     values::{BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
 use std::collections::HashMap;
@@ -64,6 +64,9 @@ impl<'ctx> Codegen<'ctx> {
                     .map_err(|e| format!("Codegen error: {:?}", e))?;
             }
         }
+
+        self.module.verify().expect("Module verification failed");
+
         Ok(())
     }
 
@@ -100,15 +103,24 @@ impl<'ctx> Codegen<'ctx> {
                 body,
                 ..
             } => {
-                let ret_type = self.to_llvm_basic_type(ret_ty).unwrap();
+                let ret_type = self.to_llvm_return_type(ret_ty).unwrap();
+
                 let param_types: Vec<BasicTypeEnum> = params
                     .iter()
                     .map(|p| self.to_llvm_basic_type(&p.ty).unwrap())
                     .collect();
-                let fn_type = ret_type.fn_type(
-                    &param_types.iter().map(|t| (*t).into()).collect::<Vec<_>>(),
-                    false,
-                );
+
+                let meta: Vec<BasicMetadataTypeEnum> =
+                    param_types.iter().map(|t| (*t).into()).collect();
+
+                let fn_type = match ret_type {
+                    AnyTypeEnum::VoidType(void_ty) => void_ty.fn_type(&meta, false),
+                    AnyTypeEnum::IntType(int_ty) => int_ty.fn_type(&meta, false),
+                    AnyTypeEnum::FloatType(float_ty) => float_ty.fn_type(&meta, false),
+                    AnyTypeEnum::PointerType(ptr_ty) => ptr_ty.fn_type(&meta, false),
+                    AnyTypeEnum::StructType(st_ty) => st_ty.fn_type(&meta, false),
+                    _ => return Err(BuilderError::ExtractOutOfRange),
+                };
 
                 let function = self.module.add_function(name, fn_type, None);
                 self.functions.insert(name.clone(), function);
@@ -181,13 +193,24 @@ impl<'ctx> Codegen<'ctx> {
             HIRStmt::Return { expr, .. } => {
                 if let Some(e) = expr {
                     let val = self.compile_expr(e)?;
-                    if self.current_function.is_none() {
-                        return Err("return outside function".into());
-                    }
-                    let _ = self.builder.build_return(Some(&val));
+                    let current_fn = self
+                        .current_function
+                        .ok_or_else(|| "Return outside function")?;
+
+                    // this could've been goofier
+                    let fn_ret_ty = {
+                        let fn_type = current_fn.get_type();
+                        let llvm_ret_type = fn_type
+                            .get_return_type()
+                            .ok_or_else(|| "Function has no return type")?;
+                        self.from_llvm_basic_type(llvm_ret_type)?
+                    };
+
+                    let casted_val = self.cast_to_type(val, &fn_ret_ty)?;
+                    let _ = self.builder.build_return(Some(&casted_val));
                 } else {
                     if self.current_function.is_none() {
-                        return Err("return outside function".into());
+                        return Err("Return outside function".into());
                     }
                     let _ = self.builder.build_return(None);
                 }
@@ -195,12 +218,10 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             HIRStmt::If {
-                cond,
-                then_branch,
-                ladder,
+                cond_then_ladder,
                 else_branch,
                 ..
-            } => self.compile_if(cond, then_branch, ladder, else_branch),
+            } => self.compile_if(cond_then_ladder, else_branch),
 
             HIRStmt::Switch { .. } => todo!(),
             HIRStmt::While { .. } => todo!(),
@@ -410,51 +431,32 @@ impl<'ctx> Codegen<'ctx> {
 
     fn compile_if(
         &mut self,
-        cond: &HIRExpr,
-        then_branch: &HIRStmt,
-        ladder: &[(HIRExpr, HIRStmt)],
+        cond_then_ladder: &[(HIRExpr, HIRStmt)],
         else_branch: &Option<Box<HIRStmt>>,
     ) -> Result<(), EcoString> {
         let parent_fn = self.current_function.ok_or_else(|| "if outside function")?;
 
         let merge_bb = self.context.append_basic_block(parent_fn, "ifcont");
 
-        let then_bb = self.context.append_basic_block(parent_fn, "if.then");
         let mut next_bb = self.context.append_basic_block(parent_fn, "if.next");
 
-        let cond_val = self.compile_condition(cond)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(cond_val, then_bb, next_bb);
-
-        self.builder.position_at_end(then_bb);
-        self.compile_stmt(then_branch).unwrap();
-        if self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_terminator())
-            .is_none()
-        {
-            let _ = self.builder.build_unconditional_branch(merge_bb);
-        }
-
-        for (i, (ladder_cond, ladder_stmt)) in ladder.iter().enumerate() {
+        for (i, (cond, stmt)) in cond_then_ladder.iter().enumerate() {
             let this_then = self
                 .context
-                .append_basic_block(parent_fn, &format!("elseif{}.then", i));
+                .append_basic_block(parent_fn, &format!("if_then_{}", i));
             let this_next = self
                 .context
-                .append_basic_block(parent_fn, &format!("elseif{}.next", i));
+                .append_basic_block(parent_fn, &format!("if_next_{}", i));
 
             self.builder.position_at_end(next_bb);
 
-            let cond_val = self.compile_condition(ladder_cond)?;
+            let cond_val = self.compile_condition(cond)?;
             let _ = self
                 .builder
                 .build_conditional_branch(cond_val, this_then, this_next);
 
             self.builder.position_at_end(this_then);
-            self.compile_stmt(ladder_stmt).unwrap();
+            self.compile_stmt(stmt)?;
             if self
                 .builder
                 .get_insert_block()
@@ -469,7 +471,7 @@ impl<'ctx> Codegen<'ctx> {
 
         self.builder.position_at_end(next_bb);
         if let Some(else_stmt) = else_branch {
-            self.compile_stmt(else_stmt).unwrap();
+            self.compile_stmt(else_stmt)?;
             if self
                 .builder
                 .get_insert_block()
@@ -563,6 +565,23 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn from_llvm_basic_type(&self, llvm_ty: BasicTypeEnum<'ctx>) -> Result<Type, EcoString> {
+        match llvm_ty {
+            BasicTypeEnum::IntType(t) => match t.get_bit_width() {
+                8 => Ok(Type::Inbuilt(InbuiltType::I8)),
+                16 => Ok(Type::Inbuilt(InbuiltType::I16)),
+                32 => Ok(Type::Inbuilt(InbuiltType::I32)),
+                64 => Ok(Type::Inbuilt(InbuiltType::I64)),
+                _ => Err("Unsupported int bit width".into()),
+            },
+            BasicTypeEnum::FloatType(_) => Ok(Type::Inbuilt(InbuiltType::F64)),
+            BasicTypeEnum::PointerType(_) => {
+                Ok(Type::Pointer(Box::new(Type::Inbuilt(InbuiltType::U8))))
+            }
+            _ => Err("Unsupported LLVM type".into()),
+        }
+    }
+
     fn to_llvm_basic_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, EcoString> {
         match ty {
             Type::Inbuilt(i) => match i {
@@ -600,6 +619,16 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(inner_ty.array_type(size).into())
             }
             Type::Function { .. } => Err("Function types are not basic types".into()),
+        }
+    }
+
+    fn to_llvm_return_type(
+        &self,
+        ty: &Type,
+    ) -> Result<inkwell::types::AnyTypeEnum<'ctx>, EcoString> {
+        match ty {
+            Type::Inbuilt(InbuiltType::U0) => Ok(self.context.void_type().as_any_type_enum()),
+            _ => Ok(self.to_llvm_basic_type(ty)?.as_any_type_enum()),
         }
     }
 
