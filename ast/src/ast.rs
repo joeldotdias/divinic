@@ -13,14 +13,12 @@ pub struct Module {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Declaration {
     Var {
-        id: NodeId,
         span: Span,
         name: Label,
         ty: Type,
         init: Option<Expr>,
     },
     Func {
-        id: NodeId,
         span: Span,
         name: Label,
         ret_ty: Type,
@@ -28,19 +26,16 @@ pub enum Declaration {
         body: Stmt,
     },
     Struct {
-        id: NodeId,
         span: Span,
         name: Option<Label>,
         fields: Vec<Declaration>, // dumbed down
     },
     Enum {
-        id: NodeId,
         span: Span,
         name: Option<Label>,
         variants: Vec<Enumerator>,
     },
     Include {
-        id: NodeId,
         name: Label,
         as_name: Option<EcoString>,
     },
@@ -48,7 +43,6 @@ pub enum Declaration {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Param {
-    pub id: NodeId,
     pub span: Span,
     pub name: Label,
     pub ty: Type,
@@ -56,7 +50,6 @@ pub struct Param {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Enumerator {
-    pub id: NodeId,
     pub span: Span,
     pub name: Label,
     pub value: Option<Expr>,
@@ -93,32 +86,25 @@ pub enum InbuiltType {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     Expr {
-        id: NodeId,
         span: Span,
         expr: Expr,
     },
     Block {
-        id: NodeId,
         span: Span,
         stmts: Vec<Stmt>,
     },
     VarDecl {
-        id: NodeId,
         span: Span,
         name: Label,
         ty: Type,
         init: Option<Expr>,
     },
     If {
-        id: NodeId,
         span: Span,
-        cond: Expr,
-        then_branch: Box<Stmt>,
-        ladder: Vec<(Expr, Stmt)>,
+        cond_then_ladder: Vec<(Expr, Stmt)>,
         else_branch: Option<Box<Stmt>>,
     },
     Switch {
-        id: NodeId,
         span: Span,
         expr: Expr,
         cases: Vec<Case>,
@@ -128,13 +114,11 @@ pub enum Stmt {
     },
 
     While {
-        id: NodeId,
         span: Span,
         cond: Expr,
         body: Box<Stmt>,
     },
     For {
-        id: NodeId,
         span: Span,
         init: Option<Box<Stmt>>,
         cond: Option<Expr>,
@@ -142,16 +126,13 @@ pub enum Stmt {
         body: Box<Stmt>,
     },
     Return {
-        id: NodeId,
         span: Span,
         expr: Option<Expr>,
     },
     Break {
-        id: NodeId,
         span: Span,
     },
     Continue {
-        id: NodeId,
         span: Span,
     },
 }
@@ -166,68 +147,57 @@ pub struct Case {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Ident {
-        id: NodeId,
         span: Span,
         name: Label,
     },
     Constant {
-        id: NodeId,
         span: Span,
         value: Constant,
     },
     Assign {
-        id: NodeId,
         span: Span,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
     Binary {
-        id: NodeId,
         span: Span,
         op: BinaryOp,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
     Unary {
-        id: NodeId,
         span: Span,
         op: UnaryOp,
         expr: Box<Expr>,
     },
     Call {
-        id: NodeId,
         span: Span,
         func: Box<Expr>,
         args: Vec<Expr>,
     },
     Member {
-        id: NodeId,
         span: Span,
         base: Box<Expr>,
         field: Label,
         arrow: bool,
     },
     Index {
-        id: NodeId,
         span: Span,
         base: Box<Expr>,
         index: Box<Expr>,
     },
     Conditional {
-        id: NodeId,
         span: Span,
         cond: Box<Expr>,
         then_expr: Box<Expr>,
         else_expr: Box<Expr>,
     },
     Cast {
-        id: NodeId,
         span: Span,
         ty: Box<Type>,
         expr: Box<Expr>,
     },
     Paren {
-        id: NodeId,
         span: Span,
         expr: Box<Expr>,
     },
@@ -243,7 +213,7 @@ pub enum Constant {
     Bool(bool),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -265,10 +235,12 @@ pub enum BinaryOp {
     Or,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UnaryOp {
     PreInc,
     PreDec,
+    PostInc,
+    PostDec,
     AddrOf,
     Deref,
     Plus,
@@ -280,9 +252,8 @@ pub enum UnaryOp {
 // helpers
 
 impl Declaration {
-    pub fn var(id: NodeId, span: Span, name: EcoString, ty: Type, init: Option<Expr>) -> Self {
+    pub fn var(span: Span, name: EcoString, ty: Type, init: Option<Expr>) -> Self {
         Self::Var {
-            id,
             span,
             name,
             ty,
@@ -290,16 +261,8 @@ impl Declaration {
         }
     }
 
-    pub fn func(
-        id: NodeId,
-        span: Span,
-        name: EcoString,
-        ret_ty: Type,
-        params: Vec<Param>,
-        body: Stmt,
-    ) -> Self {
+    pub fn func(span: Span, name: EcoString, ret_ty: Type, params: Vec<Param>, body: Stmt) -> Self {
         Self::Func {
-            id,
             span,
             name,
             ret_ty,
@@ -308,28 +271,12 @@ impl Declaration {
         }
     }
 
-    pub fn strukt(
-        id: NodeId,
-        span: Span,
-        name: Option<EcoString>,
-        fields: Vec<Declaration>,
-    ) -> Self {
-        Self::Struct {
-            id,
-            span,
-            name,
-            fields,
-        }
+    pub fn strukt(span: Span, name: Option<EcoString>, fields: Vec<Declaration>) -> Self {
+        Self::Struct { span, name, fields }
     }
 
-    pub fn enumm(
-        id: NodeId,
-        span: Span,
-        name: Option<EcoString>,
-        variants: Vec<Enumerator>,
-    ) -> Self {
+    pub fn enumm(span: Span, name: Option<EcoString>, variants: Vec<Enumerator>) -> Self {
         Self::Enum {
-            id,
             span,
             name,
             variants,
@@ -360,39 +307,31 @@ impl Type {
 }
 
 impl Stmt {
-    pub fn expr(id: NodeId, span: Span, expr: Expr) -> Self {
-        Self::Expr { id, span, expr }
+    pub fn expr(span: Span, expr: Expr) -> Self {
+        Self::Expr { span, expr }
     }
-    pub fn block(id: NodeId, span: Span, stmts: Vec<Stmt>) -> Self {
-        Self::Block { id, span, stmts }
+    pub fn block(span: Span, stmts: Vec<Stmt>) -> Self {
+        Self::Block { span, stmts }
     }
     pub fn if_stmt(
-        id: NodeId,
         span: Span,
-        cond: Expr,
-        then_branch: Stmt,
-        else_if: Vec<(Expr, Stmt)>,
+        cond_then_ladder: Vec<(Expr, Stmt)>,
         else_branch: Option<Stmt>,
     ) -> Self {
         Self::If {
-            id,
             span,
-            cond,
-            then_branch: Box::new(then_branch),
-            ladder: else_if, // keep old name if you prefer
+            cond_then_ladder,
             else_branch: else_branch.map(Box::new),
         }
     }
-    pub fn while_stmt(id: NodeId, span: Span, cond: Expr, body: Stmt) -> Self {
+    pub fn while_stmt(span: Span, cond: Expr, body: Stmt) -> Self {
         Self::While {
-            id,
             span,
             cond,
             body: Box::new(body),
         }
     }
     pub fn for_stmt(
-        id: NodeId,
         span: Span,
         init: Option<Stmt>,
         cond: Option<Expr>,
@@ -400,7 +339,6 @@ impl Stmt {
         body: Stmt,
     ) -> Self {
         Self::For {
-            id,
             span,
             init: init.map(Box::new),
             cond,
@@ -408,100 +346,85 @@ impl Stmt {
             body: Box::new(body),
         }
     }
-    pub fn return_stmt(id: NodeId, span: Span, expr: Option<Expr>) -> Self {
-        Self::Return { id, span, expr }
+    pub fn return_stmt(span: Span, expr: Option<Expr>) -> Self {
+        Self::Return { span, expr }
     }
-    pub fn break_stmt(id: NodeId, span: Span) -> Self {
-        Self::Break { id, span }
+    pub fn break_stmt(span: Span) -> Self {
+        Self::Break { span }
     }
-    pub fn continue_stmt(id: NodeId, span: Span) -> Self {
-        Self::Continue { id, span }
+    pub fn continue_stmt(span: Span) -> Self {
+        Self::Continue { span }
     }
 }
 
 impl Expr {
-    pub fn ident(id: NodeId, span: Span, name: EcoString) -> Self {
-        Self::Ident { id, span, name }
+    pub fn ident(span: Span, name: EcoString) -> Self {
+        Self::Ident { span, name }
     }
-    pub fn constant(id: NodeId, span: Span, value: Constant) -> Self {
-        Self::Constant { id, span, value }
+    pub fn constant(span: Span, value: Constant) -> Self {
+        Self::Constant { span, value }
     }
-    pub fn assign(id: NodeId, span: Span, lhs: Expr, rhs: Expr) -> Self {
+    pub fn assign(span: Span, lhs: Expr, rhs: Expr) -> Self {
         Self::Assign {
-            id,
             span,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
         }
     }
-    pub fn binary(id: NodeId, span: Span, op: BinaryOp, lhs: Expr, rhs: Expr) -> Self {
+    pub fn binary(span: Span, op: BinaryOp, lhs: Expr, rhs: Expr) -> Self {
         Self::Binary {
-            id,
             span,
             op,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
         }
     }
-    pub fn unary(id: NodeId, span: Span, op: UnaryOp, expr: Expr) -> Self {
+    pub fn unary(span: Span, op: UnaryOp, expr: Expr) -> Self {
         Self::Unary {
-            id,
             span,
             op,
             expr: Box::new(expr),
         }
     }
-    pub fn call(id: NodeId, span: Span, func: Expr, args: Vec<Expr>) -> Self {
+    pub fn call(span: Span, func: Expr, args: Vec<Expr>) -> Self {
         Self::Call {
-            id,
             span,
             func: Box::new(func),
             args,
         }
     }
-    pub fn member(id: NodeId, span: Span, base: Expr, field: EcoString, arrow: bool) -> Self {
+    pub fn member(span: Span, base: Expr, field: EcoString, arrow: bool) -> Self {
         Self::Member {
-            id,
             span,
             base: Box::new(base),
             field,
             arrow,
         }
     }
-    pub fn index(id: NodeId, span: Span, base: Expr, index: Expr) -> Self {
+    pub fn index(span: Span, base: Expr, index: Expr) -> Self {
         Self::Index {
-            id,
             span,
             base: Box::new(base),
             index: Box::new(index),
         }
     }
-    pub fn conditional(
-        id: NodeId,
-        span: Span,
-        cond: Expr,
-        then_expr: Expr,
-        else_expr: Expr,
-    ) -> Self {
+    pub fn conditional(span: Span, cond: Expr, then_expr: Expr, else_expr: Expr) -> Self {
         Self::Conditional {
-            id,
             span,
             cond: Box::new(cond),
             then_expr: Box::new(then_expr),
             else_expr: Box::new(else_expr),
         }
     }
-    pub fn cast(id: NodeId, span: Span, ty: Type, expr: Expr) -> Self {
+    pub fn cast(span: Span, ty: Type, expr: Expr) -> Self {
         Self::Cast {
-            id,
             span,
             ty: Box::new(ty),
             expr: Box::new(expr),
         }
     }
-    pub fn paren(id: NodeId, span: Span, expr: Expr) -> Self {
+    pub fn paren(span: Span, expr: Expr) -> Self {
         Self::Paren {
-            id,
             span,
             expr: Box::new(expr),
         }
