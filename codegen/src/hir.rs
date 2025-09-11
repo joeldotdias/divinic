@@ -766,29 +766,3 @@ impl HIRExprGives for HIRExpr {
         }
     }
 }
-
-// little helper
-fn is_type_compatible(expr_ty: &Type, ret_ty: &Type) -> bool {
-    use InbuiltType::*;
-
-    match (expr_ty, ret_ty) {
-        (a, b) if a == b => true, // exact match
-
-        (Type::Inbuilt(InbuiltType::I8), Type::Inbuilt(InbuiltType::I16 | I32 | I64)) => true,
-        (
-            Type::Inbuilt(InbuiltType::U8),
-            Type::Inbuilt(InbuiltType::I16 | I32 | I64 | U16 | U32 | U64),
-        ) => true,
-        (Type::Inbuilt(InbuiltType::I16), Type::Inbuilt(InbuiltType::I32 | I64)) => true,
-        (Type::Inbuilt(InbuiltType::U16), Type::Inbuilt(InbuiltType::I32 | I64 | U32 | U64)) => {
-            true
-        }
-        (Type::Inbuilt(InbuiltType::I32), Type::Inbuilt(InbuiltType::I64)) => true,
-        (Type::Inbuilt(InbuiltType::U32), Type::Inbuilt(InbuiltType::I64 | U64)) => true,
-
-        (Type::Inbuilt(InbuiltType::I8 | I16 | I32 | I64), Type::Inbuilt(InbuiltType::F64)) => true,
-        (Type::Inbuilt(InbuiltType::U8 | U16 | U32 | U64), Type::Inbuilt(InbuiltType::F64)) => true,
-
-        _ => false,
-    }
-}

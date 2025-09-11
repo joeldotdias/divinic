@@ -8,7 +8,7 @@ use inkwell::{
     types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType},
     values::{BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, ffi::CString};
 
 use crate::hir::{HIRDeclaration, HIRExpr, HIRExprGives, HIRModule, HIRStmt};
 use ast::ast::{BinaryOp, Constant, Expr, InbuiltType, Type, UnaryOp};
@@ -22,10 +22,12 @@ struct Variable<'ctx> {
 
 pub struct Codegen<'ctx> {
     context: &'ctx Context,
-    module: InkModule<'ctx>,
+    pub module: InkModule<'ctx>,
     builder: Builder<'ctx>,
     #[allow(dead_code)]
     engine: ExecutionEngine<'ctx>,
+
+    strings_counter: u32,
 
     variables: Vec<HashMap<EcoString, Variable<'ctx>>>,
     functions: HashMap<EcoString, FunctionValue<'ctx>>,
@@ -46,6 +48,7 @@ impl<'ctx> Codegen<'ctx> {
             module,
             builder,
             engine,
+            strings_counter: 0,
             variables: vec![HashMap::new()],
             functions: HashMap::new(),
             struct_types: HashMap::new(),
@@ -58,6 +61,8 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile(&mut self, modules: &[HIRModule]) -> Result<(), String> {
+        self.declare_printf();
+
         for m in modules {
             for decl in &m.decls {
                 self.compile_decl(decl)
@@ -384,7 +389,34 @@ impl<'ctx> Codegen<'ctx> {
                     Err("Unsupported lvalue in assignment".into())
                 }
             }
-            _ => todo!(),
+            HIRExpr::Call { func, args, .. } => match &**func {
+                HIRExpr::Ident { name, .. } => {
+                    let fn_val = *self
+                        .functions
+                        .get(name.as_str())
+                        .ok_or_else(|| format!("Unknown function {}", name))?;
+
+                    let compiled_args: Vec<_> = args
+                        .iter()
+                        .map(|arg| self.compile_expr(arg).map(|v| v.into()))
+                        .collect::<Result<_, _>>()?;
+
+                    let call = self
+                        .builder
+                        .build_call(fn_val, &compiled_args, "calltmp")
+                        .unwrap();
+                    Ok(call
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap_or_else(|| self.context.i32_type().const_zero().into()))
+                }
+                _ => Err("Function pointers not yet supported".into()),
+            },
+            HIRExpr::Member { .. } => todo!(),
+            HIRExpr::Index { .. } => todo!(),
+            HIRExpr::Conditional { .. } => todo!(),
+            HIRExpr::Cast { .. } => todo!(),
+            HIRExpr::Paren { .. } => todo!(),
         }
     }
 
@@ -488,8 +520,8 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn compile_constant(&self, constant: &Constant) -> Result<BasicValueEnum<'ctx>, EcoString> {
-        let val = match constant {
+    fn compile_constant(&mut self, constant: &Constant) -> Result<BasicValueEnum<'ctx>, EcoString> {
+        let val: BasicValueEnum<'ctx> = match constant {
             Constant::Int(v) => self.context.i64_type().const_int(*v as u64, true).into(),
             Constant::UInt(v) => self.context.i64_type().const_int(*v, false).into(),
             Constant::Float(v) => self.context.f64_type().const_float(*v).into(),
@@ -499,11 +531,72 @@ impl<'ctx> Codegen<'ctx> {
                 .bool_type()
                 .const_int(if *v { 1 } else { 0 }, false)
                 .into(),
-            Constant::String(_) => return Err("String constants not supported yet".into()),
+            Constant::String(v) => {
+                let bytes = CString::new(v.as_str()).unwrap();
+                let c_str = bytes.as_bytes_with_nul();
+
+                let i8_type = self.context.i8_type();
+                let array_type = i8_type.array_type(c_str.len() as u32);
+
+                let global = self.module.add_global(
+                    array_type,
+                    None,
+                    &format!("str.{}", self.strings_counter),
+                );
+                self.strings_counter += 1;
+
+                let const_array = i8_type.const_array(
+                    &c_str
+                        .iter()
+                        .map(|&b| i8_type.const_int(b as u64, false))
+                        .collect::<Vec<_>>(),
+                );
+                global.set_initializer(&const_array);
+                global.set_constant(true);
+
+                global
+                    .as_pointer_value()
+                    .const_cast(self.context.ptr_type(AddressSpace::default()))
+                    .into()
+            }
         };
-        Ok(val)
+        Ok(val.into())
     }
 
+    // standard function, might change later
+    pub fn declare_printf(&mut self) {
+        let i32_type = self.context.i32_type();
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
+
+        let printf_type =
+            i32_type.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr_type)], true);
+
+        // this is kinda crazy, TODO find a slightly better approach MAYBE?
+        let libc_printf = self.module.add_function("printf", printf_type, None);
+
+        let printf_wrapper = self.module.add_function("Printf", printf_type, None);
+
+        let entry = self.context.append_basic_block(printf_wrapper, "entry");
+        let builder = self.context.create_builder();
+        builder.position_at_end(entry);
+
+        let args: Vec<_> = (0..printf_wrapper.count_params())
+            .map(|i| printf_wrapper.get_nth_param(i).unwrap().into())
+            .collect();
+
+        let call_result = builder
+            .build_call(libc_printf, &args, "printf_call")
+            .unwrap();
+
+        if let Some(return_value) = call_result.try_as_basic_value().left() {
+            builder.build_return(Some(&return_value)).unwrap();
+        } else {
+            let zero = i32_type.const_int(0, false);
+            builder.build_return(Some(&zero)).unwrap();
+        }
+
+        self.functions.insert("Printf".into(), printf_wrapper);
+    }
     fn cast_to_type(
         &self,
         value: BasicValueEnum<'ctx>,
