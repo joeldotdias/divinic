@@ -50,7 +50,7 @@ impl<'a> Parser<'a> {
                 expr: Box::new(operand),
             }
         } else {
-            self.parse_basic_expr()?
+            self.parse_suffixed_atom()?
         };
 
         let mut curr_infix = self.curr_tok.maybe_infix_op();
@@ -61,40 +61,28 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            // handle assignments
+            self.bump(); // move past infix token
 
-            self.bump();
-            let (right_expr, next_infix) = self.parse_expr_with_context(prec_info.1)?;
-            expr = Expr::Binary {
-                span: DUMMY_SPAN,
-                op: infix_op,
-                lhs: Box::new(expr),
-                rhs: Box::new(right_expr),
+            if false {
+                todo!()
+                // remember to put curr = next infix here as well
+            } else {
+                let (right_expr, next_infix) = self.parse_expr_with_context(prec_info.1)?;
+                expr = Expr::Binary {
+                    span: DUMMY_SPAN,
+                    op: infix_op,
+                    lhs: Box::new(expr),
+                    rhs: Box::new(right_expr),
+                };
+                curr_infix = next_infix;
             };
-            curr_infix = next_infix;
         }
 
         Ok((expr, curr_infix))
     }
 
-    fn parse_basic_expr(&mut self) -> ParseResult<Expr> {
-        match &self.curr_tok.kind {
-            TokenKind::Literal(lit) => {
-                let sym = lit.symbol.clone();
-                match lit.kind {
-                    LitKind::Bool => todo!(),
-                    LitKind::Char => todo!(),
-                    LitKind::Integer => self.parse_int_literal(sym),
-                    LitKind::Float => todo!(),
-                    LitKind::Str => todo!(),
-                }
-            }
-            _ => self.parse_postfix_expr(),
-        }
-    }
-
-    fn parse_postfix_expr(&mut self) -> ParseResult<Expr> {
-        let mut expr = self.parse_primary_expr()?;
+    fn parse_suffixed_atom(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_base_expr()?;
 
         loop {
             match &self.curr_tok.kind {
@@ -139,8 +127,8 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_primary_expr(&mut self) -> ParseResult<Expr> {
-        match self.curr_tok.kind {
+    fn parse_base_expr(&mut self) -> ParseResult<Expr> {
+        match &self.curr_tok.kind {
             TokenKind::LParen => {
                 self.bump();
                 let inner = self.parse_expr()?;
@@ -155,6 +143,16 @@ impl<'a> Parser<'a> {
                     span: DUMMY_SPAN,
                     name,
                 })
+            }
+            TokenKind::Literal(lit) => {
+                let sym = lit.symbol.clone();
+                match lit.kind {
+                    LitKind::Bool => todo!(),
+                    LitKind::Char => todo!(),
+                    LitKind::Integer => self.parse_int_literal(sym),
+                    LitKind::Float => todo!(),
+                    LitKind::Str => todo!(),
+                }
             }
             _ => {
                 println!("\n\nHuh: {:?}", self.curr_tok);

@@ -1,5 +1,5 @@
 U32 thing(U32 num, U32 j) {
-    return 2 + 5;
+    return 2 * 8++ + 5;
 }
 
 U0 Main() {
