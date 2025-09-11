@@ -46,7 +46,7 @@ impl ParseSess {
             // }
 
             let mut parser = Parser::new(&self, stream);
-            parser.parse_module().unwrap();
+            let _ast = parser.parse_module();
             for e in parser.errs {
                 let (filename, source) = self.src_file(e.loc.fid as usize);
                 e.report(filename.to_str().unwrap(), source);

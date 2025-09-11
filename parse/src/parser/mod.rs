@@ -70,6 +70,7 @@ impl<'a> Parser<'a> {
         let decls = Parser::series_of(self, &Parser::parse_top_level, None)?;
         // let dbg_str = format!("{:#?}", decls);
         // fs::write("ast_dump.txt", dbg_str).unwrap();
+
         Ok(Module { decls })
     }
 

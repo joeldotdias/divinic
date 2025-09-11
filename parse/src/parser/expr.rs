@@ -33,7 +33,6 @@ type PrecInfo = (Precedence, Precedence);
 
 impl<'a> Parser<'a> {
     pub fn parse_expr(&mut self) -> ParseResult<Expr> {
-        println!("\n\nIn parse expr => {:?}", self.curr_tok);
         let (expr, _) = self.parse_expr_with_context(Precedence::Lowest)?;
         Ok(expr)
     }
@@ -72,7 +71,6 @@ impl<'a> Parser<'a> {
                 lhs: Box::new(expr),
                 rhs: Box::new(right_expr),
             };
-
             curr_infix = next_infix;
         }
 
@@ -96,9 +94,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_postfix_expr(&mut self) -> ParseResult<Expr> {
-        println!("In postfix expr {:?}", self.curr_tok);
         let mut expr = self.parse_primary_expr()?;
-        println!("Parsed primary: {:?}\nCurr: {:?}", expr, self.curr_tok);
 
         loop {
             match &self.curr_tok.kind {
@@ -120,19 +116,25 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::PlusPlus => {
                     self.bump();
-                    println!("In plus plus");
                     // Expr
                     expr = Expr::Unary {
                         span: DUMMY_SPAN,
-                        op: UnaryOp::PreInc,
+                        op: UnaryOp::PostInc,
+                        expr: Box::new(expr),
+                    }
+                }
+                TokenKind::MinusMinus => {
+                    self.bump();
+                    // Expr
+                    expr = Expr::Unary {
+                        span: DUMMY_SPAN,
+                        op: UnaryOp::PostDec,
                         expr: Box::new(expr),
                     }
                 }
                 _ => break,
             }
         }
-
-        println!("Done postfix => {:?}", expr);
 
         Ok(expr)
     }
@@ -162,9 +164,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_int_literal(&mut self, sym: EcoString) -> ParseResult<Expr> {
-        println!("\n\nParsing the int literal => {}", sym);
-        println!("With Curr => {:?}\n\n", self.curr_tok);
-
         self.bump();
         Ok(Expr::Constant {
             span: DUMMY_SPAN,

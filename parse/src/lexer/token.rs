@@ -296,14 +296,16 @@ impl TokenKind {
         use TokenKind::*;
         matches!(
             self,
-            U0 | U8 | U16 | U32 | U64 | I8 | I16 | I32 | I64 | F64 | Bool | Ident(_)
+            U0 | U8 | U16 | U32 | U64 | I8 | I16 | I32 | I64 | F64 | Bool
         )
+        // this will be impl when sym table is done
+        // | Ident(_)
     }
 
     pub fn to_str(&self) -> &'_ str {
         match &self {
             TokenKind::Ident(s) => s,
-            TokenKind::Literal(_) => todo!(),
+            TokenKind::Literal(lit) => &lit.symbol,
             TokenKind::LParen => "(",
             TokenKind::RParen => ")",
             TokenKind::LCurly => "(",
