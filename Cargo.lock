@@ -51,15 +51,7 @@ name = "divinic"
 version = "0.1.0"
 dependencies = [
  "codegen",
- "driver",
  "parse",
-]
-
-[[package]]
-name = "driver"
-version = "0.1.0"
-dependencies = [
- "ariadne",
 ]
 
 [[package]]

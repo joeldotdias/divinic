@@ -5,12 +5,11 @@ edition = "2024"
 
 [workspace]
 resolver = "2"
-members = ["cursor", "parse", "ast", "codegen", "driver"]
+members = ["cursor", "parse", "ast", "codegen"]
 
 [workspace.dependencies]
 ecow = "0.2.6"
 
 [dependencies]
 parse = { path = "parse" }
-driver = { path = "driver" }
 codegen = { path = "codegen" }
