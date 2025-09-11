@@ -41,7 +41,7 @@ pub(crate) fn lex_token_trees<'sesh, 'src>(
     match lexed {
         Ok(ts) => {
             if lexer.errs.is_empty() {
-                println!("Result:\n{:#?}", ts);
+                // println!("Result:\n{:#?}", ts);
                 Ok(ts)
             } else {
                 Err(lexer.errs)

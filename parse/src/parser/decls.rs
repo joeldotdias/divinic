@@ -10,15 +10,15 @@ use crate::{
 
 impl<'a> Parser<'a> {
     // parse a function, class, var declaration or an include
-    pub fn parse_top_level(&mut self) -> Result<Declaration, ParseErr> {
+    pub fn parse_top_level(&mut self) -> Result<Option<Declaration>, ParseErr> {
         // println!("{:?} | {:?}", self.prev_tok, self.curr_tok);
         let decl = if self.is_func_def() {
             self.parse_func()?
         } else {
-            todo!()
+            return Ok(None);
         };
 
-        Ok(decl)
+        Ok(Some(decl))
     }
 
     fn is_func_def(&self) -> bool {
@@ -57,23 +57,21 @@ impl<'a> Parser<'a> {
 
         println!("{:?}", self.curr_tok);
 
-        while !self.eat_no_expect(&TokenKind::RCurly) {
-            self.bump();
-        }
+        let body = self.parse_block()?;
+
+        // while !self.eat_no_expect(&TokenKind::RCurly) {
+        //     self.bump();
+        // }
         println!("After eating => {:?}", self.curr_tok);
 
         let fn_decl = Declaration::Func {
-            id: 0,
             span: start.merge(self.prev_tok.span),
             name: fn_name,
             ret_ty,
             params,
-            body: Stmt::Block {
-                id: 0,
-                span: DUMMY_SPAN,
-                stmts: Vec::new(),
-            },
+            body,
         };
+        println!("Parsed func ");
         dbg!(&fn_decl);
 
         Ok(fn_decl)
@@ -89,7 +87,6 @@ impl<'a> Parser<'a> {
         let name = self.parse_ident()?;
 
         Ok(Some(Param {
-            id: 0,
             span: pstart.merge(self.prev_tok.span),
             name,
             ty,

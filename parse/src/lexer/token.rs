@@ -1,5 +1,5 @@
 use ast::{
-    ast::{InbuiltType, Type},
+    ast::{BinaryOp, UnaryOp},
     span::{DUMMY_SPAN, Span},
 };
 use ecow::EcoString;
@@ -184,12 +184,81 @@ impl Token {
         Some(Token::new(kind, self.span.extend(joint.span)))
     }
 
+    pub fn maybe_prefix_op(&self) -> Option<UnaryOp> {
+        let prefix = match &self.kind {
+            TokenKind::Plus => UnaryOp::Plus,
+            TokenKind::PlusPlus => UnaryOp::PreInc,
+            TokenKind::Minus => UnaryOp::Minus,
+            TokenKind::MinusMinus => UnaryOp::PreDec,
+            TokenKind::Bang => UnaryOp::LogNot,
+            TokenKind::Tilde => UnaryOp::BitNot,
+            TokenKind::Star => UnaryOp::Deref,
+            TokenKind::And => UnaryOp::AddrOf,
+            _ => return None,
+        };
+        Some(prefix)
+    }
+
+    pub fn maybe_postfix_op(&self) -> Option<UnaryOp> {
+        let postfix = match &self.kind {
+            TokenKind::PlusPlus => UnaryOp::PostInc,
+            TokenKind::MinusMinus => UnaryOp::PostDec,
+            _ => return None,
+        };
+        Some(postfix)
+    }
+
+    pub fn maybe_infix_op(&self) -> Option<BinaryOp> {
+        let infix = match &self.kind {
+            TokenKind::Plus => BinaryOp::Add,
+            TokenKind::Minus => BinaryOp::Sub,
+            TokenKind::Star => BinaryOp::Mul,
+            TokenKind::Slash => BinaryOp::Div,
+            TokenKind::Percent => BinaryOp::Mod,
+            TokenKind::EqEq => BinaryOp::Eq,
+            TokenKind::NEq => BinaryOp::Ne,
+            TokenKind::Lt => BinaryOp::Lt,
+            TokenKind::LtEq => BinaryOp::Le,
+            TokenKind::Gt => BinaryOp::Gt,
+            TokenKind::GtEq => BinaryOp::Ge,
+            TokenKind::AndAnd => BinaryOp::And,
+            TokenKind::OrOr => BinaryOp::Or,
+            TokenKind::And => BinaryOp::BitAnd,
+            TokenKind::Or => BinaryOp::BitOr,
+            TokenKind::Caret => BinaryOp::BitXor,
+            TokenKind::Shl => BinaryOp::Shl,
+            TokenKind::Shr => BinaryOp::Shr,
+            /* i don't know if assign ops should be here */
+            // TokenKind::Eq
+            // | TokenKind::PlusEq
+            // | TokenKind::MinusEq
+            // | TokenKind::StarEq
+            // | TokenKind::SlashEq
+            // | TokenKind::PercentEq
+            // | TokenKind::AndEq
+            // | TokenKind::OrEq
+            // | TokenKind::CaretEq
+            // | TokenKind::ShlEq
+            // | TokenKind::ShrEq => BinaryOp::Assign,
+            _ => return None,
+        };
+        Some(infix)
+    }
+
     pub fn is_type_tok(&self) -> bool {
         use TokenKind::*;
         matches!(
             self.kind,
             U0 | U8 | U16 | U32 | U64 | I8 | I16 | I32 | I64 | F64 | Bool | Ident(_)
         )
+    }
+
+    pub fn is_block_ender(&self) -> bool {
+        matches!(self.kind, TokenKind::RCurly | TokenKind::Eof)
+    }
+
+    pub fn to_str(&self) -> &'_ str {
+        self.kind.to_str()
     }
 }
 
@@ -222,56 +291,15 @@ impl TokenKind {
     pub fn is_delim(&self) -> bool {
         self.open_delim().is_some() || self.close_delim().is_some()
     }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Delimiter {
-    Parenthesis,
-    Curly,
-    Bracket,
-}
-
-impl Delimiter {
-    pub fn as_open_token_kind(&self) -> TokenKind {
-        match *self {
-            Delimiter::Parenthesis => TokenKind::LParen,
-            Delimiter::Curly => TokenKind::LCurly,
-            Delimiter::Bracket => TokenKind::LBracket,
-        }
+    pub fn is_type_tok(&self) -> bool {
+        use TokenKind::*;
+        matches!(
+            self,
+            U0 | U8 | U16 | U32 | U64 | I8 | I16 | I32 | I64 | F64 | Bool | Ident(_)
+        )
     }
 
-    pub fn as_close_token_kind(&self) -> TokenKind {
-        match *self {
-            Delimiter::Parenthesis => TokenKind::RParen,
-            Delimiter::Curly => TokenKind::RCurly,
-            Delimiter::Bracket => TokenKind::RBracket,
-        }
-    }
-
-    pub fn to_open_str(&self) -> &'static str {
-        match self {
-            Delimiter::Parenthesis => "(",
-            Delimiter::Curly => "{",
-            Delimiter::Bracket => "[",
-        }
-    }
-
-    pub fn to_close_str(&self) -> &'static str {
-        match self {
-            Delimiter::Parenthesis => ")",
-            Delimiter::Curly => "}",
-            Delimiter::Bracket => "]",
-        }
-    }
-}
-
-impl Token {
-    pub fn to_str(&self) -> &'_ str {
-        self.kind.to_str()
-    }
-}
-
-impl TokenKind {
     pub fn to_str(&self) -> &'_ str {
         match &self {
             TokenKind::Ident(s) => s,
@@ -346,6 +374,47 @@ impl TokenKind {
             TokenKind::Include => "include",
             TokenKind::Define => "define",
             TokenKind::Asm => "asm",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Delimiter {
+    Parenthesis,
+    Curly,
+    Bracket,
+}
+
+impl Delimiter {
+    pub fn as_open_token_kind(&self) -> TokenKind {
+        match *self {
+            Delimiter::Parenthesis => TokenKind::LParen,
+            Delimiter::Curly => TokenKind::LCurly,
+            Delimiter::Bracket => TokenKind::LBracket,
+        }
+    }
+
+    pub fn as_close_token_kind(&self) -> TokenKind {
+        match *self {
+            Delimiter::Parenthesis => TokenKind::RParen,
+            Delimiter::Curly => TokenKind::RCurly,
+            Delimiter::Bracket => TokenKind::RBracket,
+        }
+    }
+
+    pub fn to_open_str(&self) -> &'static str {
+        match self {
+            Delimiter::Parenthesis => "(",
+            Delimiter::Curly => "{",
+            Delimiter::Bracket => "[",
+        }
+    }
+
+    pub fn to_close_str(&self) -> &'static str {
+        match self {
+            Delimiter::Parenthesis => ")",
+            Delimiter::Curly => "}",
+            Delimiter::Bracket => "]",
         }
     }
 }

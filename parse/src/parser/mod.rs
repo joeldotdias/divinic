@@ -1,6 +1,6 @@
-use std::mem;
+use std::{fs, mem};
 
-use ast::ast::{Declaration, InbuiltType, Module, Type};
+use ast::ast::{InbuiltType, Module, Type};
 use ecow::EcoString;
 
 use crate::{
@@ -14,6 +14,10 @@ use crate::{
 
 pub mod decls;
 pub mod error;
+pub mod expr;
+pub mod stmt;
+
+pub type ParseResult<T> = Result<T, ParseErr>;
 
 pub struct Parser<'a> {
     pub psess: &'a ParseSess,
@@ -59,9 +63,13 @@ impl<'a> Parser<'a> {
         // let is_i64_ty = self.look_ahead(1, |t| t == &TokenKind::I64);
         // println!("is_i64_ty after 3 bumps: {}", is_i64_ty);
 
-        let mut decls = Vec::new();
-        let decl = self.parse_top_level()?;
-        decls.push(decl);
+        // let mut decls = Vec::new();
+        // let decl = self.parse_top_level()?;
+        // decls.push(decl);
+
+        let decls = Parser::series_of(self, &Parser::parse_top_level, None)?;
+        // let dbg_str = format!("{:#?}", decls);
+        // fs::write("ast_dump.txt", dbg_str).unwrap();
         Ok(Module { decls })
     }
 
