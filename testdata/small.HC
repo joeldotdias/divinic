@@ -7,6 +7,8 @@ U0 Main() {
     if(num == 0) {
         num++;
     } else {
-        num--;
+        num = 84;
     }
+
+    "num = %d", num;
 }

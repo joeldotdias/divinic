@@ -215,7 +215,7 @@ impl Token {
             TokenKind::Star => BinaryOp::Mul,
             TokenKind::Slash => BinaryOp::Div,
             TokenKind::Percent => BinaryOp::Mod,
-            TokenKind::EqEq => BinaryOp::Eq,
+            TokenKind::EqEq => BinaryOp::EqEq,
             TokenKind::NEq => BinaryOp::Ne,
             TokenKind::Lt => BinaryOp::Lt,
             TokenKind::LtEq => BinaryOp::Le,
@@ -229,17 +229,17 @@ impl Token {
             TokenKind::Shl => BinaryOp::Shl,
             TokenKind::Shr => BinaryOp::Shr,
             /* i don't know if assign ops should be here */
-            // TokenKind::Eq
-            // | TokenKind::PlusEq
-            // | TokenKind::MinusEq
-            // | TokenKind::StarEq
-            // | TokenKind::SlashEq
-            // | TokenKind::PercentEq
-            // | TokenKind::AndEq
-            // | TokenKind::OrEq
-            // | TokenKind::CaretEq
-            // | TokenKind::ShlEq
-            // | TokenKind::ShrEq => BinaryOp::Assign,
+            TokenKind::Eq => BinaryOp::Eq,
+            TokenKind::PlusEq => BinaryOp::AddEq,
+            TokenKind::MinusEq => BinaryOp::SubEq,
+            TokenKind::StarEq => BinaryOp::MulEq,
+            TokenKind::SlashEq => BinaryOp::DivEq,
+            TokenKind::PercentEq => BinaryOp::ModEq,
+            TokenKind::AndEq => BinaryOp::BitAndEq,
+            TokenKind::OrEq => BinaryOp::BitOrEq,
+            TokenKind::CaretEq => BinaryOp::BitXorEq,
+            TokenKind::ShlEq => BinaryOp::ShlEq,
+            TokenKind::ShrEq => BinaryOp::ShrEq,
             _ => return None,
         };
         Some(infix)

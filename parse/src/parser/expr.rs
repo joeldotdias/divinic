@@ -5,13 +5,13 @@ use ast::{
 use ecow::EcoString;
 
 use crate::{
-    lexer::token::{LitInner, LitKind, TokenKind},
+    lexer::token::{LitKind, TokenKind},
     parser::{ParseResult, Parser},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub enum Precedence {
-    Lowest,   // entry point
+    Lowest,
     Assign,   // = += -= *= /= %= ^= &= |= <<= >>=
     Ternary,  // ? :
     LOr,      // ||
@@ -63,9 +63,14 @@ impl<'a> Parser<'a> {
 
             self.bump(); // move past infix token
 
-            if false {
-                todo!()
-                // remember to put curr = next infix here as well
+            if is_assignment_op(infix_op) {
+                let (right_expr, next_infix) = self.parse_expr_with_context(prec_info.0)?;
+                expr = Expr::Assign {
+                    span: DUMMY_SPAN,
+                    lhs: Box::new(expr),
+                    rhs: Box::new(right_expr),
+                };
+                curr_infix = next_infix;
             } else {
                 let (right_expr, next_infix) = self.parse_expr_with_context(prec_info.1)?;
                 expr = Expr::Binary {
@@ -183,13 +188,23 @@ pub fn prec_info_from_infix(op: BinaryOp) -> PrecInfo {
     use Precedence::*;
 
     match op {
-        // BinaryOp::Eq => (Assign, Lowest),
+        BinaryOp::Eq
+        | BinaryOp::AddEq
+        | BinaryOp::SubEq
+        | BinaryOp::MulEq
+        | BinaryOp::DivEq
+        | BinaryOp::ModEq
+        | BinaryOp::BitAndEq
+        | BinaryOp::BitXorEq
+        | BinaryOp::BitOrEq
+        | BinaryOp::ShlEq
+        | BinaryOp::ShrEq => (Assign, Lowest),
         BinaryOp::Or => (LOr, LOr),
         BinaryOp::And => (LAnd, LAnd),
         BinaryOp::BitOr => (BitOr, BitOr),
         BinaryOp::BitXor => (BitXor, BitOr),
         BinaryOp::BitAnd => (BitAnd, BitAnd),
-        BinaryOp::Eq | BinaryOp::Ne => (Equality, Equality),
+        BinaryOp::EqEq | BinaryOp::Ne => (Equality, Equality),
         BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => (Compare, Compare),
         BinaryOp::Shl | BinaryOp::Shr => (Shift, Shift),
         BinaryOp::Add | BinaryOp::Sub => (Sum, Sum),
@@ -197,19 +212,19 @@ pub fn prec_info_from_infix(op: BinaryOp) -> PrecInfo {
     }
 }
 
-// pub fn is_assignment_op(op: BinaryOp) -> bool {
-//     matches!(
-//         op,
-//         // BinaryOp::Le
-//         // | TokenKind::PlusEq
-//         // | TokenKind::MinusEq
-//         // | TokenKind::StarEq
-//         // | TokenKind::SlashEq
-//         // | TokenKind::PercentEq
-//         // | TokenKind::AndEq
-//         // | TokenKind::OrEq
-//         // | TokenKind::CaretEq
-//         // | TokenKind::ShlEq
-//         // | TokenKind::ShrEq => BinaryOp::Assign,
-//     )
-// }
+pub fn is_assignment_op(op: BinaryOp) -> bool {
+    matches!(
+        op,
+        BinaryOp::Eq
+            | BinaryOp::AddEq
+            | BinaryOp::SubEq
+            | BinaryOp::MulEq
+            | BinaryOp::DivEq
+            | BinaryOp::ModEq
+            | BinaryOp::BitAndEq
+            | BinaryOp::BitXorEq
+            | BinaryOp::BitOrEq
+            | BinaryOp::ShlEq
+            | BinaryOp::ShrEq
+    )
+}

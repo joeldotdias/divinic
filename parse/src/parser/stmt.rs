@@ -39,6 +39,7 @@ impl<'a> Parser<'a> {
         match &self.curr_tok.kind {
             TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
+            TokenKind::For => self.parse_for(),
 
             tok if tok.is_type_tok() => self.parse_var_decl(),
 
@@ -117,6 +118,55 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_for(&mut self) -> Result<Stmt, ParseErr> {
+        let start = self.curr_tok.span;
+        if !self.eat_no_expect(&TokenKind::For) {
+            // handle
+        }
+
+        if !self.eat_no_expect(&TokenKind::LParen) {
+            // handle
+        }
+
+        let init = if !self.eat_no_expect(&TokenKind::Semi) {
+            Some(Box::new(self.parse_statement()?))
+        } else {
+            None
+        };
+
+        println!("\n\nInit: {:?}\nAnd now: {:?}", init, self.curr_tok);
+
+        let cond = if !self.eat_no_expect(&TokenKind::Semi) {
+            let cond = Some(self.parse_expr()?);
+            if !self.eat_no_expect(&TokenKind::Semi) {
+                // handle
+            }
+            cond
+        } else {
+            None
+        };
+
+        let step = if !self.eat_no_expect(&TokenKind::RParen) {
+            let step = Some(self.parse_expr()?);
+            if !self.eat_no_expect(&TokenKind::RParen) {
+                // handle
+            }
+            step
+        } else {
+            None
+        };
+
+        let body = self.parse_block()?;
+
+        Ok(Stmt::For {
+            span: start.merge(self.prev_tok.span),
+            init,
+            cond,
+            step,
+            body: Box::new(body),
+        })
+    }
+
     fn parse_return(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::Return) {
@@ -157,10 +207,7 @@ impl<'a> Parser<'a> {
             span: pspan.merge(self.prev_tok.span),
             expr: ast::ast::Expr::Call {
                 span: pspan,
-                func: Box::new(ast::ast::Expr::Constant {
-                    span: DUMMY_SPAN,
-                    value: Constant::String("printf".into()),
-                }),
+                func: "printf".into(),
                 args,
             },
         })

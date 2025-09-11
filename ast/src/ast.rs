@@ -172,7 +172,7 @@ pub enum Expr {
     },
     Call {
         span: Span,
-        func: Box<Expr>,
+        func: Label,
         args: Vec<Expr>,
     },
     Member {
@@ -226,13 +226,26 @@ pub enum BinaryOp {
     Le,
     Gt,
     Ge,
-    Eq,
+    EqEq,
     Ne,
     BitAnd,
     BitXor,
     BitOr,
     And,
     Or,
+
+    /* these are assignment ops but appear in the same context as a binary op */
+    Eq,
+    AddEq,
+    SubEq,
+    MulEq,
+    DivEq,
+    ModEq,
+    BitAndEq,
+    BitXorEq,
+    BitOrEq,
+    ShlEq,
+    ShrEq,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -386,12 +399,8 @@ impl Expr {
             expr: Box::new(expr),
         }
     }
-    pub fn call(span: Span, func: Expr, args: Vec<Expr>) -> Self {
-        Self::Call {
-            span,
-            func: Box::new(func),
-            args,
-        }
+    pub fn call(span: Span, func: Label, args: Vec<Expr>) -> Self {
+        Self::Call { span, func, args }
     }
     pub fn member(span: Span, base: Expr, field: EcoString, arrow: bool) -> Self {
         Self::Member {
