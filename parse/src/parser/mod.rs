@@ -96,7 +96,6 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    // this will ignore the closing separator
     fn series_of<N>(
         &mut self,
         subparser: &impl Fn(&mut Self) -> Result<Option<N>, ParseErr>,
@@ -119,23 +118,6 @@ impl<'a> Parser<'a> {
 
         Ok(parsed)
     }
-
-    // fn series_of_has_trailing_separator<N>(
-    //     &mut self,
-    //     subparser: &impl Fn(&mut Self) -> Result<Option<N>, ParseErr>,
-    //     sep: Option<&TokenKind>,
-    // ) -> Result<(Vec<N>, bool), ParseErr> {
-    //     let mut results = vec![];
-    //
-    //     while let Some(res) = subparser(self)? {
-    //         results.push(res);
-    //         if let Some(sep) = sep {
-    //             // if let Some(separator) = self.maybe_one(sep) {}
-    //         }
-    //     }
-    //
-    //     todo!()
-    // }
 
     fn peek_token(&self) -> TokenKind {
         self.look_ahead(1, |tok| tok.clone())

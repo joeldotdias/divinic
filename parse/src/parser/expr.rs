@@ -151,7 +151,7 @@ impl<'a> Parser<'a> {
                     LitKind::Char => todo!(),
                     LitKind::Integer => self.parse_int_literal(sym),
                     LitKind::Float => todo!(),
-                    LitKind::Str => todo!(),
+                    LitKind::Str => self.parse_string_literal(sym),
                 }
             }
             _ => {
@@ -161,11 +161,20 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /*literal parsing will be improved*/
     fn parse_int_literal(&mut self, sym: EcoString) -> ParseResult<Expr> {
         self.bump();
         Ok(Expr::Constant {
             span: DUMMY_SPAN,
             value: Constant::Int(str::parse::<i64>(&sym).unwrap()),
+        })
+    }
+
+    fn parse_string_literal(&mut self, sym: EcoString) -> ParseResult<Expr> {
+        self.bump();
+        Ok(Expr::Constant {
+            span: DUMMY_SPAN,
+            value: Constant::String(sym.to_string()),
         })
     }
 }

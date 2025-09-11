@@ -1,7 +1,10 @@
-use ast::{ast::Stmt, span::DUMMY_SPAN};
+use ast::{
+    ast::{Constant, Stmt},
+    span::DUMMY_SPAN,
+};
 
 use crate::{
-    lexer::token::TokenKind,
+    lexer::token::{LitKind, TokenKind},
     parser::{Parser, error::ParseErr},
 };
 
@@ -34,19 +37,12 @@ impl<'a> Parser<'a> {
         println!("Next: {:?}", self.peek_token());
 
         match &self.curr_tok.kind {
-            TokenKind::Return => {
-                println!("Parsing return ");
-                self.parse_return()
-            }
-            TokenKind::If => {
-                println!("Parsing return ");
-                self.parse_if()
-            }
+            TokenKind::Return => self.parse_return(),
+            TokenKind::If => self.parse_if(),
 
-            tok if tok.is_type_tok() => {
-                println!("Parsing var decl");
-                self.parse_var_decl()
-            }
+            tok if tok.is_type_tok() => self.parse_var_decl(),
+
+            TokenKind::Literal(lit) if lit.kind == LitKind::Str => self.parse_printf_call(),
 
             _ => {
                 println!(
@@ -86,11 +82,6 @@ impl<'a> Parser<'a> {
             // err
         }
 
-        // panic!(
-        //     "Ty: {:?} | Name: {}\nExpr: {:?}\n\nNow {:?}",
-        //     ty, name, expr, self.curr_tok
-        // );
-        //
         Ok(Stmt::VarDecl {
             span: DUMMY_SPAN,
             name,
@@ -144,6 +135,34 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Return {
             span: start.merge(self.prev_tok.span),
             expr,
+        })
+    }
+
+    fn parse_printf_call(&mut self) -> Result<Stmt, ParseErr> {
+        let start = self.curr_tok.span;
+
+        let args = Parser::series_of(
+            self,
+            &|parser: &mut Parser| parser.parse_expr().map(Some),
+            Some(&TokenKind::Comma),
+        )?;
+
+        let pspan = start.merge(self.prev_tok.span);
+        if !self.eat_no_expect(&TokenKind::Semi) {
+            println!("Expected semicolon but found: {:?}", self.curr_tok);
+            // handle
+        }
+
+        Ok(Stmt::Expr {
+            span: pspan.merge(self.prev_tok.span),
+            expr: ast::ast::Expr::Call {
+                span: pspan,
+                func: Box::new(ast::ast::Expr::Constant {
+                    span: DUMMY_SPAN,
+                    value: Constant::String("printf".into()),
+                }),
+                args,
+            },
         })
     }
 }
