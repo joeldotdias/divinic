@@ -1,4 +1,6 @@
 use ecow::EcoString;
+use inkwell::FloatPredicate::{OEQ, OGE, OGT, OLE, OLT, ONE};
+use inkwell::IntPredicate::{EQ, NE, SGE, SGT, SLE, SLT, UGE, UGT, ULE, ULT};
 use inkwell::{
     AddressSpace, IntPredicate,
     builder::{Builder, BuilderError},
@@ -174,11 +176,16 @@ impl<'ctx> Codegen<'ctx> {
                 let llvm_type = self.to_llvm_basic_type(ty)?;
 
                 let alloca = if let Some(current_fn) = self.current_function {
-                    let entry = current_fn
-                        .get_first_basic_block()
-                        .unwrap_or_else(|| self.context.append_basic_block(current_fn, "entry"));
+                    let entry = current_fn.get_first_basic_block().unwrap();
+
                     let entry_builder = self.context.create_builder();
-                    entry_builder.position_at_end(entry);
+
+                    if let Some(first_instr) = entry.get_first_instruction() {
+                        entry_builder.position_before(&first_instr);
+                    } else {
+                        entry_builder.position_at_end(entry);
+                    }
+
                     entry_builder.build_alloca(llvm_type, name)
                 } else {
                     self.builder.build_alloca(llvm_type, name)
@@ -194,7 +201,6 @@ impl<'ctx> Codegen<'ctx> {
                 self.insert_var(name.clone(), alloca, llvm_type, ty.clone());
                 Ok(())
             }
-
             HIRStmt::Return { expr, .. } => {
                 if let Some(e) = expr {
                     let val = self.compile_expr(e)?;
@@ -231,7 +237,13 @@ impl<'ctx> Codegen<'ctx> {
             HIRStmt::Switch { .. } => todo!(),
             HIRStmt::While { .. } => todo!(),
 
-            HIRStmt::For { .. } => todo!(),
+            HIRStmt::For {
+                init,
+                cond,
+                step,
+                body,
+                ..
+            } => self.compile_for(init, cond, step, body),
 
             HIRStmt::Break { .. } => todo!(),
             HIRStmt::Continue { .. } => todo!(),
@@ -254,110 +266,204 @@ impl<'ctx> Codegen<'ctx> {
             HIRExpr::Binary { op, lhs, rhs, .. } => {
                 let l_val = self.compile_expr(lhs)?;
                 let r_val = self.compile_expr(rhs)?;
-                let l_val = self.cast_to_type(l_val, &expr.ty())?;
-                let r_val = self.cast_to_type(r_val, &expr.ty())?;
-
-                match expr.ty() {
+                let expr_ty = expr.ty();
+                let l_val = self.cast_to_type(l_val, &expr_ty)?;
+                let r_val = self.cast_to_type(r_val, &expr_ty)?;
+                let res: BasicValueEnum = match expr.ty() {
                     Type::Inbuilt(InbuiltType::F64) => {
-                        let res = match op {
+                        let l_float = l_val.into_float_value();
+                        let r_float = r_val.into_float_value();
+                        let res: BasicValueEnum<'ctx> = match op {
                             BinaryOp::Add => self
                                 .builder
-                                .build_float_add(
-                                    l_val.into_float_value(),
-                                    r_val.into_float_value(),
-                                    "addtmp",
-                                )
-                                .map(|v| v.into()),
+                                .build_float_add(l_float, r_float, "faddtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
                             BinaryOp::Sub => self
                                 .builder
-                                .build_float_sub(
-                                    l_val.into_float_value(),
-                                    r_val.into_float_value(),
-                                    "subtmp",
-                                )
-                                .map(|v| v.into()),
+                                .build_float_sub(l_float, r_float, "fsubtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
                             BinaryOp::Mul => self
                                 .builder
-                                .build_float_mul(
-                                    l_val.into_float_value(),
-                                    r_val.into_float_value(),
-                                    "multmp",
-                                )
-                                .map(|v| v.into()),
+                                .build_float_mul(l_float, r_float, "fmultmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
                             BinaryOp::Div => self
                                 .builder
-                                .build_float_div(
-                                    l_val.into_float_value(),
-                                    r_val.into_float_value(),
-                                    "divtmp",
-                                )
-                                .map(|v| v.into()),
+                                .build_float_div(l_float, r_float, "fdivtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
                             BinaryOp::Eq => self
                                 .builder
-                                .build_float_compare(
-                                    inkwell::FloatPredicate::OEQ,
-                                    l_val.into_float_value(),
-                                    r_val.into_float_value(),
-                                    "eqtmp",
-                                )
-                                .map(|v| v.into()),
+                                .build_float_compare(OEQ, l_float, r_float, "feqtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Ne => self
+                                .builder
+                                .build_float_compare(ONE, l_float, r_float, "fnetmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
                             BinaryOp::Lt => self
                                 .builder
-                                .build_float_compare(
-                                    inkwell::FloatPredicate::OLT,
-                                    l_val.into_float_value(),
-                                    r_val.into_float_value(),
-                                    "lttmp",
-                                )
-                                .map(|v| v.into()),
+                                .build_float_compare(OLT, l_float, r_float, "flttmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Le => self
+                                .builder
+                                .build_float_compare(OLE, l_float, r_float, "fletmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Gt => self
+                                .builder
+                                .build_float_compare(OGT, l_float, r_float, "fgttmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Ge => self
+                                .builder
+                                .build_float_compare(OGE, l_float, r_float, "fgetmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
                             _ => return Err("Unsupported float binary operator".into()),
-                        }
-                        .map_err(|e| format!("Codegen error: {:?}", e))?;
-
-                        Ok(res)
+                        };
+                        res
                     }
-                    Type::Inbuilt(InbuiltType::I64) | Type::Inbuilt(InbuiltType::I32) => {
-                        let res = match op {
-                            BinaryOp::Add => self.builder.build_int_add(
-                                l_val.into_int_value(),
-                                r_val.into_int_value(),
-                                "addtmp",
-                            ),
-                            BinaryOp::Sub => self.builder.build_int_sub(
-                                l_val.into_int_value(),
-                                r_val.into_int_value(),
-                                "subtmp",
-                            ),
-                            BinaryOp::Mul => self.builder.build_int_mul(
-                                l_val.into_int_value(),
-                                r_val.into_int_value(),
-                                "multmp",
-                            ),
-                            BinaryOp::Div => self.builder.build_int_signed_div(
-                                l_val.into_int_value(),
-                                r_val.into_int_value(),
-                                "divtmp",
-                            ),
-                            BinaryOp::Eq => self.builder.build_int_compare(
-                                IntPredicate::EQ,
-                                l_val.into_int_value(),
-                                r_val.into_int_value(),
-                                "eqtmp",
-                            ),
-                            BinaryOp::Lt => self.builder.build_int_compare(
-                                IntPredicate::SLT,
-                                l_val.into_int_value(),
-                                r_val.into_int_value(),
-                                "lttmp",
-                            ),
+
+                    Type::Inbuilt(t)
+                        if matches!(
+                            t,
+                            InbuiltType::I8
+                                | InbuiltType::I16
+                                | InbuiltType::I32
+                                | InbuiltType::I64
+                                | InbuiltType::U8
+                                | InbuiltType::U16
+                                | InbuiltType::U32
+                                | InbuiltType::U64
+                        ) =>
+                    {
+                        let l_int = l_val.into_int_value();
+                        let r_int = r_val.into_int_value();
+                        let signed = matches!(
+                            t,
+                            InbuiltType::I8
+                                | InbuiltType::I16
+                                | InbuiltType::I32
+                                | InbuiltType::I64
+                        );
+                        match op {
+                            BinaryOp::Add => self
+                                .builder
+                                .build_int_add(l_int, r_int, "iaddtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Sub => self
+                                .builder
+                                .build_int_sub(l_int, r_int, "isubtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Mul => self
+                                .builder
+                                .build_int_mul(l_int, r_int, "imultmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Div => {
+                                if signed {
+                                    self.builder
+                                        .build_int_signed_div(l_int, r_int, "idivtmp")
+                                        .map_err(|e| -> EcoString { e.to_string().into() })?
+                                        .into()
+                                } else {
+                                    self.builder
+                                        .build_int_unsigned_div(l_int, r_int, "idivtmp")
+                                        .map_err(|e| -> EcoString { e.to_string().into() })?
+                                        .into()
+                                }
+                            }
+                            BinaryOp::Eq => self
+                                .builder
+                                .build_int_compare(EQ, l_int, r_int, "ieqtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Ne => self
+                                .builder
+                                .build_int_compare(NE, l_int, r_int, "inetmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Lt => self
+                                .builder
+                                .build_int_compare(
+                                    if signed { SLT } else { ULT },
+                                    l_int,
+                                    r_int,
+                                    "ilttmp",
+                                )
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Le => self
+                                .builder
+                                .build_int_compare(
+                                    if signed { SLE } else { ULE },
+                                    l_int,
+                                    r_int,
+                                    "iletmp",
+                                )
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Gt => self
+                                .builder
+                                .build_int_compare(
+                                    if signed { SGT } else { UGT },
+                                    l_int,
+                                    r_int,
+                                    "igttmp",
+                                )
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Ge => self
+                                .builder
+                                .build_int_compare(
+                                    if signed { SGE } else { UGE },
+                                    l_int,
+                                    r_int,
+                                    "igetmp",
+                                )
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
                             _ => return Err("Unsupported integer binary operator".into()),
                         }
-                        .map_err(|e| format!("Codegen error: {:?}", e))?;
-                        Ok(res.into())
                     }
-
-                    _ => Err("Unsupported type for binary op".into()),
-                }
+                    Type::Inbuilt(InbuiltType::Bool) => {
+                        let l_bool = l_val.into_int_value();
+                        let r_bool = r_val.into_int_value();
+                        match op {
+                            BinaryOp::And => self
+                                .builder
+                                .build_and(l_bool, r_bool, "andtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Or => self
+                                .builder
+                                .build_or(l_bool, r_bool, "ortmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Eq => self
+                                .builder
+                                .build_int_compare(EQ, l_bool, r_bool, "beqtmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            BinaryOp::Ne => self
+                                .builder
+                                .build_int_compare(NE, l_bool, r_bool, "bnetmp")
+                                .map_err(|e| -> EcoString { e.to_string().into() })?
+                                .into(),
+                            _ => return Err("Unsupported bool binary operator".into()),
+                        }
+                    }
+                    Type::Pointer(_) => return Err("Pointers aren't yet supported!".into()),
+                    _ => return Err("Unsupported type for binary operation".into()),
+                };
+                Ok(res)
             }
             HIRExpr::Unary { op, expr, .. } => {
                 let v = self.compile_expr(expr)?;
@@ -520,6 +626,65 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
+    fn compile_for(
+        &mut self,
+        init: &Option<Box<HIRStmt>>,
+        cond: &Option<HIRExpr>,
+        step: &Option<HIRExpr>,
+        body: &HIRStmt,
+    ) -> Result<(), EcoString> {
+        let parent_fn = self
+            .current_function
+            .ok_or_else(|| "This `for` is outside any function")?;
+
+        self.push_scope();
+
+        if let Some(init_stmt) = init {
+            self.compile_stmt(init_stmt)?;
+        }
+
+        // basic bloccccs
+        let cond_bb = self.context.append_basic_block(parent_fn, "for_cond");
+        let body_bb = self.context.append_basic_block(parent_fn, "for_body");
+        let step_bb = self.context.append_basic_block(parent_fn, "for_step");
+        let after_bb = self.context.append_basic_block(parent_fn, "for_end");
+
+        let _ = self.builder.build_unconditional_branch(cond_bb);
+
+        self.builder.position_at_end(cond_bb);
+        let cond_val = if let Some(c) = cond {
+            self.compile_condition(c)?
+        } else {
+            self.context.bool_type().const_int(1, false) // true for infinite loop
+        };
+        let _ = self
+            .builder
+            .build_conditional_branch(cond_val, body_bb, after_bb);
+
+        self.builder.position_at_end(body_bb);
+        self.compile_stmt(body)?;
+
+        if self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_terminator())
+            .is_none()
+        {
+            let _ = self.builder.build_unconditional_branch(step_bb);
+        }
+
+        self.builder.position_at_end(step_bb);
+
+        if let Some(s) = step {
+            self.compile_expr(s)?;
+        }
+
+        let _ = self.builder.build_unconditional_branch(cond_bb);
+        self.builder.position_at_end(after_bb);
+        self.pop_scope();
+
+        Ok(())
+    }
     fn compile_constant(&mut self, constant: &Constant) -> Result<BasicValueEnum<'ctx>, EcoString> {
         let val: BasicValueEnum<'ctx> = match constant {
             Constant::Int(v) => self.context.i64_type().const_int(*v as u64, true).into(),
