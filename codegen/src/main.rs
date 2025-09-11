@@ -87,7 +87,7 @@ fn main() {
                                             DUMMY_SPAN,
                                             Expr::call(
                                                 DUMMY_SPAN,
-                                                Expr::ident(DUMMY_SPAN, "Printf".into()),
+                                                "Printf".into(),
                                                 vec![Expr::constant(
                                                     DUMMY_SPAN,
                                                     Constant::String("* ".into()),
@@ -100,7 +100,7 @@ fn main() {
                                         DUMMY_SPAN,
                                         Expr::call(
                                             DUMMY_SPAN,
-                                            Expr::ident(DUMMY_SPAN, "Printf".into()),
+                                            "Printf".into(),
                                             vec![Expr::constant(
                                                 DUMMY_SPAN,
                                                 Constant::String("\n".into()),

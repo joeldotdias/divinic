@@ -174,7 +174,7 @@ fn print_hir_expr(expr: &HIRExpr, level: usize) {
         }
         HIRExpr::Call { func, args, ty, .. } => {
             println!("{}Call ({:?}):", indent(level), ty);
-            print_hir_expr(func, level + 1);
+            println!("{}{}", func, indent(level));
             for a in args {
                 print_hir_expr(a, level + 1);
             }

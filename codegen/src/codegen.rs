@@ -495,29 +495,26 @@ impl<'ctx> Codegen<'ctx> {
                     Err("Unsupported lvalue in assignment".into())
                 }
             }
-            HIRExpr::Call { func, args, .. } => match &**func {
-                HIRExpr::Ident { name, .. } => {
-                    let fn_val = *self
-                        .functions
-                        .get(name.as_str())
-                        .ok_or_else(|| format!("Unknown function {}", name))?;
+            HIRExpr::Call { func, args, .. } => {
+                let fn_val = *self
+                    .functions
+                    .get(func.as_str())
+                    .ok_or_else(|| format!("Unknown function {}", func))?;
 
-                    let compiled_args: Vec<_> = args
-                        .iter()
-                        .map(|arg| self.compile_expr(arg).map(|v| v.into()))
-                        .collect::<Result<_, _>>()?;
+                let compiled_args: Vec<_> = args
+                    .iter()
+                    .map(|arg| self.compile_expr(arg).map(|v| v.into()))
+                    .collect::<Result<_, _>>()?;
 
-                    let call = self
-                        .builder
-                        .build_call(fn_val, &compiled_args, "calltmp")
-                        .unwrap();
-                    Ok(call
-                        .try_as_basic_value()
-                        .left()
-                        .unwrap_or_else(|| self.context.i32_type().const_zero().into()))
-                }
-                _ => Err("Function pointers not yet supported".into()),
-            },
+                let call = self
+                    .builder
+                    .build_call(fn_val, &compiled_args, "calltmp")
+                    .unwrap();
+                Ok(call
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap_or_else(|| self.context.i32_type().const_zero().into()))
+            }
             HIRExpr::Member { .. } => todo!(),
             HIRExpr::Index { .. } => todo!(),
             HIRExpr::Conditional { .. } => todo!(),

@@ -91,7 +91,7 @@ pub enum HIRExpr {
     },
     Call {
         span: Span,
-        func: Box<HIRExpr>,
+        func: Label,
         args: Vec<HIRExpr>,
         ty: Type,
     },
@@ -389,7 +389,7 @@ impl HIRContext {
             },
             Expr::Call { span, func, args } => HIRExpr::Call {
                 span,
-                func: Box::new(Self::ast_expr_to_hir(*func)),
+                func,
                 args: args.into_iter().map(Self::ast_expr_to_hir).collect(),
                 ty: Type::Inbuilt(InbuiltType::U0),
             },
@@ -455,7 +455,7 @@ impl HIRContext {
             HIRDeclaration::Var { init, .. } => {
                 if let Some(expr) = init {
                     let mut table = globals.clone();
-                    Self::infer_expr(expr, &mut table);
+                    Self::infer_expr(expr, &mut table, globals);
                 }
             }
             HIRDeclaration::Func {
@@ -478,7 +478,7 @@ impl HIRContext {
             HIRDeclaration::Enum { variants, .. } => {
                 for v in variants {
                     if let Some(expr) = &mut v.value {
-                        Self::infer_expr(expr, &mut globals.clone());
+                        Self::infer_expr(expr, &mut globals.clone(), globals);
                     }
                 }
             }
@@ -532,7 +532,7 @@ impl HIRContext {
     ) {
         match stmt {
             HIRStmt::Expr { expr, ty, .. } => {
-                Self::infer_expr(expr, locals);
+                Self::infer_expr(expr, locals, globals);
                 *ty = expr.ty();
             }
             HIRStmt::Block { stmts, .. } => {
@@ -542,7 +542,7 @@ impl HIRContext {
             }
             HIRStmt::VarDecl { name, ty, init, .. } => {
                 if let Some(e) = init {
-                    Self::infer_expr(e, locals);
+                    Self::infer_expr(e, locals, globals);
                 }
                 locals.insert(name.clone(), SymEntry { ty: ty.clone() });
             }
@@ -552,7 +552,7 @@ impl HIRContext {
                 ..
             } => {
                 for (c, s) in cond_then_ladder {
-                    Self::infer_expr(c, locals);
+                    Self::infer_expr(c, locals, globals);
                     Self::infer_stmt(s, locals, globals, expected_ret_ty);
                 }
                 if let Some(e) = else_branch {
@@ -560,13 +560,13 @@ impl HIRContext {
                 }
             }
             HIRStmt::Switch { expr, cases, .. } => {
-                Self::infer_expr(expr, locals);
+                Self::infer_expr(expr, locals, globals);
                 for case in cases {
                     Self::infer_stmt(&mut case.body, locals, globals, expected_ret_ty);
                 }
             }
             HIRStmt::While { cond, body, .. } => {
-                Self::infer_expr(cond, locals);
+                Self::infer_expr(cond, locals, globals);
                 Self::infer_stmt(body, locals, globals, expected_ret_ty);
             }
             HIRStmt::For {
@@ -580,16 +580,16 @@ impl HIRContext {
                     Self::infer_stmt(i, locals, globals, expected_ret_ty);
                 }
                 if let Some(c) = cond {
-                    Self::infer_expr(c, locals);
+                    Self::infer_expr(c, locals, globals);
                 }
                 if let Some(s) = step {
-                    Self::infer_expr(s, locals);
+                    Self::infer_expr(s, locals, globals);
                 }
                 Self::infer_stmt(body, locals, globals, expected_ret_ty);
             }
             HIRStmt::Return { expr, .. } => {
                 if let Some(e) = expr {
-                    Self::infer_expr(e, locals);
+                    Self::infer_expr(e, locals, globals);
                     if let Some(expected_ty) = expected_ret_ty {
                         if Self::is_type_compatible(&e.ty(), expected_ty) {
                             *e.ty_mut() = expected_ty.clone();
@@ -601,10 +601,10 @@ impl HIRContext {
         }
     }
 
-    fn infer_expr(expr: &mut HIRExpr, locals: &mut SymTable) {
+    fn infer_expr(expr: &mut HIRExpr, locals: &mut SymTable, globals: &SymTable) {
         match expr {
             HIRExpr::Ident { name, ty, .. } => {
-                if let Some(entry) = locals.get(name) {
+                if let Some(entry) = locals.get(name).or_else(|| globals.get(name)) {
                     *ty = entry.ty.clone();
                 }
             }
@@ -619,35 +619,38 @@ impl HIRContext {
                 };
             }
             HIRExpr::Assign { lhs, rhs, ty, .. } => {
-                Self::infer_expr(lhs, locals);
-                Self::infer_expr(rhs, locals);
+                Self::infer_expr(lhs, locals, globals);
+                Self::infer_expr(rhs, locals, globals);
                 *ty = lhs.ty();
             }
             HIRExpr::Binary { lhs, rhs, ty, .. } => {
-                Self::infer_expr(lhs, locals);
-                Self::infer_expr(rhs, locals);
+                Self::infer_expr(lhs, locals, globals);
+                Self::infer_expr(rhs, locals, globals);
                 *ty = Self::unify_types(lhs.ty(), rhs.ty());
             }
             HIRExpr::Unary { expr: e, ty, .. } => {
-                Self::infer_expr(e, locals);
+                Self::infer_expr(e, locals, globals);
                 *ty = e.ty();
             }
             HIRExpr::Call { func, args, ty, .. } => {
-                Self::infer_expr(func, locals);
                 for a in args {
-                    Self::infer_expr(a, locals);
+                    Self::infer_expr(a, locals, globals);
                 }
-                *ty = func.ty();
+                if let Some(entry) = locals.get(func).or_else(|| globals.get(func)) {
+                    *ty = entry.ty.clone();
+                } else {
+                    *ty = Type::Inbuilt(InbuiltType::U0);
+                }
             }
             HIRExpr::Member { base, ty, .. } => {
-                Self::infer_expr(base, locals);
+                Self::infer_expr(base, locals, globals);
                 *ty = base.ty();
             }
             HIRExpr::Index {
                 base, index, ty, ..
             } => {
-                Self::infer_expr(base, locals);
-                Self::infer_expr(index, locals);
+                Self::infer_expr(base, locals, globals);
+                Self::infer_expr(index, locals, globals);
                 *ty = base.ty();
             }
             HIRExpr::Conditional {
@@ -657,17 +660,17 @@ impl HIRContext {
                 ty,
                 ..
             } => {
-                Self::infer_expr(cond, locals);
-                Self::infer_expr(then_expr, locals);
-                Self::infer_expr(else_expr, locals);
+                Self::infer_expr(cond, locals, globals);
+                Self::infer_expr(then_expr, locals, globals);
+                Self::infer_expr(else_expr, locals, globals);
                 *ty = Self::unify_types(then_expr.ty(), else_expr.ty());
             }
             HIRExpr::Cast { expr: e, ty: t, .. } => {
-                Self::infer_expr(e, locals);
+                Self::infer_expr(e, locals, globals);
                 *t = t.clone();
             }
             HIRExpr::Paren { expr: e, ty, .. } => {
-                Self::infer_expr(e, locals);
+                Self::infer_expr(e, locals, globals);
                 *ty = e.ty();
             }
         }
