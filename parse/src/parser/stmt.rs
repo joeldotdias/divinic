@@ -1,7 +1,4 @@
-use ast::{
-    ast::{Constant, Stmt},
-    span::DUMMY_SPAN,
-};
+use ast::ast::{Expr, Stmt};
 
 use crate::{
     lexer::token::{LitKind, TokenKind},
@@ -10,7 +7,6 @@ use crate::{
 
 impl<'a> Parser<'a> {
     pub fn parse_block(&mut self) -> Result<Stmt, ParseErr> {
-        println!("Parsing block => {:?}", self.curr_tok.kind);
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::LCurly) {
             // handle err
@@ -40,6 +36,8 @@ impl<'a> Parser<'a> {
             TokenKind::If => self.parse_if(),
             TokenKind::For => self.parse_for(),
             TokenKind::While => self.parse_while(),
+            TokenKind::Break => self.parse_break(),
+            TokenKind::Continue => self.parse_continue(),
 
             tok if tok.is_type_tok() => self.parse_var_decl(),
 
@@ -67,6 +65,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_var_decl(&mut self) -> Result<Stmt, ParseErr> {
+        let start = self.curr_tok.span;
         let ty = self.parse_ty()?;
         let name = self.parse_ident_no_recover()?;
 
@@ -84,7 +83,7 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Stmt::VarDecl {
-            span: DUMMY_SPAN,
+            span: start.merge(self.prev_tok.span),
             name,
             ty,
             init: expr,
@@ -92,6 +91,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_if(&mut self) -> Result<Stmt, ParseErr> {
+        let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::If) {
             // handle err
         }
@@ -107,17 +107,25 @@ impl<'a> Parser<'a> {
 
         let mut cond_then_ladder = vec![(cond, then_branch)];
 
-        while self.eat_no_expect(&TokenKind::Elif) {
-            if !self.eat_no_expect(&TokenKind::LParen) {
-                // handle err
-            }
+        while self.check_no_expect(&TokenKind::Else) {
+            if self.look_ahead(1, |tok| tok == &TokenKind::If) {
+                // consume else and if
+                self.bump();
+                self.bump();
 
-            let cond = self.parse_expr()?;
-            if !self.eat_no_expect(&TokenKind::RParen) {
-                // handle err
+                if !self.eat_no_expect(&TokenKind::LParen) {
+                    // handle err
+                }
+
+                let cond = self.parse_expr()?;
+                if !self.eat_no_expect(&TokenKind::RParen) {
+                    // handle err
+                }
+                let then_branch = self.parse_block()?;
+                cond_then_ladder.push((cond, then_branch));
+            } else {
+                break;
             }
-            let then_branch = self.parse_block()?;
-            cond_then_ladder.push((cond, then_branch));
         }
 
         let else_branch = match self.curr_tok.kind {
@@ -129,7 +137,7 @@ impl<'a> Parser<'a> {
         };
 
         Ok(Stmt::If {
-            span: DUMMY_SPAN,
+            span: start.merge(self.prev_tok.span),
             cond_then_ladder,
             else_branch,
         })
@@ -246,11 +254,41 @@ impl<'a> Parser<'a> {
 
         Ok(Stmt::Expr {
             span: pspan.merge(self.prev_tok.span),
-            expr: ast::ast::Expr::Call {
+            expr: Expr::Call {
                 span: pspan,
                 func: "printf".into(),
                 args,
             },
+        })
+    }
+
+    fn parse_break(&mut self) -> Result<Stmt, ParseErr> {
+        let start = self.curr_tok.span;
+        if !self.eat_no_expect(&TokenKind::Break) {
+            // handle
+        }
+
+        if !self.eat_no_expect(&TokenKind::Semi) {
+            // handle
+        }
+
+        Ok(Stmt::Break {
+            span: start.merge(self.prev_tok.span),
+        })
+    }
+
+    fn parse_continue(&mut self) -> Result<Stmt, ParseErr> {
+        let start = self.curr_tok.span;
+        if !self.eat_no_expect(&TokenKind::Continue) {
+            // handle
+        }
+
+        if !self.eat_no_expect(&TokenKind::Semi) {
+            // handle
+        }
+
+        Ok(Stmt::Continue {
+            span: start.merge(self.prev_tok.span),
         })
     }
 }
