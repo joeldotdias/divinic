@@ -14,7 +14,7 @@ fn main() {
     };
     let mut sesh = ParseSess::new(files);
     dbg!(&sesh);
-    sesh.mk_ast();
+    sesh.mk_asteez();
 
     let context = CodegenContext::create();
     let mut codegen =

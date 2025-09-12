@@ -25,7 +25,7 @@ impl ParseSess {
         }
     }
 
-    pub fn mk_ast(&mut self) {
+    pub fn mk_asteez(&mut self) {
         println!("\n\nHere\n\n");
         for (i, f) in self.source_files.iter().enumerate() {
             self.curr = i as u16;
