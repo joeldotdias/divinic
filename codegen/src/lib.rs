@@ -1,6 +1,6 @@
 pub mod codegen;
-pub mod hir;
 pub mod emitter;
+pub mod hir;
 pub mod util;
 
 #[cfg(test)]

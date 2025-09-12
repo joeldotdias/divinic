@@ -67,6 +67,7 @@ impl<'a> Parser<'a> {
                 let (right_expr, next_infix) = self.parse_expr_with_context(prec_info.0)?;
                 expr = Expr::Assign {
                     span: DUMMY_SPAN,
+                    op: infix_op,
                     lhs: Box::new(expr),
                     rhs: Box::new(right_expr),
                 };

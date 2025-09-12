@@ -17,7 +17,6 @@ impl<'a> Parser<'a> {
         }
 
         let mut stmts = Vec::new();
-        // while !self.look_ahead(1, |t| t == &TokenKind::RCurly || t == &TokenKind::Eof) {
         while !self.curr_tok.is_block_ender() {
             stmts.push(self.parse_statement()?);
         }
@@ -40,6 +39,7 @@ impl<'a> Parser<'a> {
             TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
             TokenKind::For => self.parse_for(),
+            TokenKind::While => self.parse_while(),
 
             tok if tok.is_type_tok() => self.parse_var_decl(),
 
@@ -98,11 +98,28 @@ impl<'a> Parser<'a> {
         if !self.eat_no_expect(&TokenKind::LParen) {
             // handle err
         }
+
         let cond = self.parse_expr()?;
         if !self.eat_no_expect(&TokenKind::RParen) {
             // handle err
         }
         let then_branch = self.parse_block()?;
+
+        let mut cond_then_ladder = vec![(cond, then_branch)];
+
+        while self.eat_no_expect(&TokenKind::Elif) {
+            if !self.eat_no_expect(&TokenKind::LParen) {
+                // handle err
+            }
+
+            let cond = self.parse_expr()?;
+            if !self.eat_no_expect(&TokenKind::RParen) {
+                // handle err
+            }
+            let then_branch = self.parse_block()?;
+            cond_then_ladder.push((cond, then_branch));
+        }
+
         let else_branch = match self.curr_tok.kind {
             TokenKind::Else => {
                 self.bump();
@@ -113,8 +130,8 @@ impl<'a> Parser<'a> {
 
         Ok(Stmt::If {
             span: DUMMY_SPAN,
-            cond_then_ladder: vec![(cond, then_branch)],
-            else_branch: else_branch,
+            cond_then_ladder,
+            else_branch,
         })
     }
 
@@ -163,6 +180,30 @@ impl<'a> Parser<'a> {
             init,
             cond,
             step,
+            body: Box::new(body),
+        })
+    }
+
+    fn parse_while(&mut self) -> Result<Stmt, ParseErr> {
+        let start = self.curr_tok.span;
+        if !self.eat_no_expect(&TokenKind::While) {
+            // handle
+        }
+
+        if !self.eat_no_expect(&TokenKind::LParen) {
+            // handle
+        }
+
+        let cond = self.parse_expr()?;
+        if !self.eat_no_expect(&TokenKind::RParen) {
+            // handle
+        }
+
+        let body = self.parse_block()?;
+
+        Ok(Stmt::While {
+            span: start.merge(self.prev_tok.span),
+            cond,
             body: Box::new(body),
         })
     }

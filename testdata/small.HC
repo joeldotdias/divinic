@@ -6,8 +6,14 @@ U0 Main() {
     I64 num = 0;
     if(num == 0) {
         num++;
-    } else {
+    } elif(num > 2) {
+        num *= 2;
+    }else {
         num = 84;
+    }
+
+    while(num < 5 && num != 10) {
+        num--;
     }
 
     "num = %d", num;
