@@ -211,12 +211,56 @@ impl<'a> Parser<'a> {
 
     fn parse_string_literal(&mut self, sym: EcoString) -> ParseResult<Expr> {
         let span = self.curr_tok.span;
+        println!("Curr tok: {:?}", self.curr_tok);
         self.bump();
+        // the expects here are only because if this happens its a problem with the lexer
+        // better to panic so i know there's something wrong that to report this
+        let raw_str = sym
+            .strip_prefix('"')
+            .expect("string should always open with a quote")
+            .strip_suffix('"')
+            .expect("string should always close with a quote");
+        let str_contents = process_escape_sequences(raw_str);
+
         Ok(Expr::Constant {
             span,
-            value: Constant::String(sym.to_string()),
+            value: Constant::String(str_contents),
         })
     }
+}
+
+pub fn process_escape_sequences(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            // Handle escape sequence
+            if let Some(next_char) = chars.next() {
+                match next_char {
+                    'n' => result.push('\n'),
+                    't' => result.push('\t'),
+                    'r' => result.push('\r'),
+                    '0' => result.push('\0'),
+                    '\\' => result.push('\\'),
+                    '"' => result.push('"'),
+                    '\'' => result.push('\''),
+                    _ => {
+                        // Unknown escape sequence, keep both characters
+                        result.push('\\');
+                        result.push(next_char);
+                    }
+                }
+            } else {
+                // Backslash at end of string
+                result.push('\\');
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }
 
 pub fn prec_info_from_infix(op: BinaryOp) -> PrecInfo {
