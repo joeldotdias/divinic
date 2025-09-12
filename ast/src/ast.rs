@@ -249,6 +249,25 @@ pub enum BinaryOp {
     ShrEq,
 }
 
+impl BinaryOp {
+    pub fn is_assignment_op(&self) -> bool {
+        matches!(
+            self,
+            BinaryOp::Eq
+                | BinaryOp::AddEq
+                | BinaryOp::SubEq
+                | BinaryOp::MulEq
+                | BinaryOp::DivEq
+                | BinaryOp::ModEq
+                | BinaryOp::BitAndEq
+                | BinaryOp::BitXorEq
+                | BinaryOp::BitOrEq
+                | BinaryOp::ShlEq
+                | BinaryOp::ShrEq
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UnaryOp {
     PreInc,

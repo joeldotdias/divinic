@@ -1,4 +1,4 @@
-U32 thing(U32 num, U32 j) {
+U32 while(U32 num, U32 j) {
     return 2 * 8++ + 5;
 }
 
