@@ -1,6 +1,7 @@
 pub mod lexer;
 pub mod parser;
 pub mod session;
+pub mod symtab;
 
 #[cfg(test)]
 mod tests {

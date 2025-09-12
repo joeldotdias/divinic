@@ -1,10 +1,11 @@
 use std::{fs, path::PathBuf};
 
-use ast::ast::Module;
+use ast::ast::{Declaration, Module, Type};
 
 use crate::{
     lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor},
     parser::Parser,
+    symtab::{ModuleScope, Scope, SymbolTable},
 };
 
 #[derive(Default, Debug)]
@@ -26,7 +27,6 @@ impl ParseSess {
     }
 
     pub fn mk_asteez(&mut self) {
-        println!("\n\nHere\n\n");
         for (i, f) in self.source_files.iter().enumerate() {
             self.curr = i as u16;
 
@@ -72,6 +72,87 @@ impl ParseSess {
                 }
             };
         }
+    }
+
+    pub fn build_symbol_tables(&mut self) -> Result<(), String> {
+        let mut sym_tab = SymbolTable {
+            module_scopes: Vec::new(),
+        };
+
+        for (midx, module) in self.modules.iter().enumerate() {
+            println!("\n\nModule {}\n{:#?}\n\n", midx, module);
+            let mut local_scope = Scope::new();
+
+            for decl in &module.decls {
+                match decl {
+                    Declaration::Func {
+                        name,
+                        ret_ty,
+                        params,
+                        ..
+                    } => {
+                        let params_tys: Vec<Type> = params.iter().map(|p| p.ty.clone()).collect();
+
+                        let func_ty = Type::Function {
+                            params: params_tys,
+                            ret: Box::new(ret_ty.clone()),
+                            varargs: false,
+                        };
+
+                        local_scope.insert(name.clone(), func_ty);
+                    }
+                    _ => {}
+                }
+            }
+
+            sym_tab.module_scopes.push(ModuleScope {
+                local_symbols: local_scope,
+                resolved_symbols: Scope::new(),
+            });
+        }
+
+        // resolving
+        for (midx, module) in self.modules.iter().enumerate() {
+            let mut resolved = sym_tab.module_scopes[midx].local_symbols.clone();
+
+            for decl in module.decls.clone() {
+                if let Declaration::Include { name, .. } = decl {
+                    if let Some(included_idx) = self.find_module_by_name(&name) {
+                        let included_scope = &sym_tab.module_scopes[included_idx].local_symbols;
+                        resolved.merge(included_scope);
+                    } else {
+                        panic!("Didn't find {}", name);
+                        // handle err
+                    }
+                }
+            }
+
+            sym_tab.module_scopes[midx].resolved_symbols = resolved;
+        }
+
+        println!("Symbol table=>\n{:#?}", sym_tab);
+
+        Ok(())
+    }
+
+    fn find_module_by_name(&self, name: &str) -> Option<usize> {
+        // println!("Looking for: '{}'", name);
+        // println!("Available modules:");
+        // for (idx, source_file) in self.source_files.iter().enumerate() {
+        //     let path = source_file.name.to_str();
+        //     println!("  [{}]: {:?}", idx, path);
+        // }
+        for (idx, source_file) in self.source_files.iter().enumerate() {
+            let sbpt = source_file.name.to_str();
+            println!("Finding module by name: {:?}", sbpt);
+            if sbpt == Some(name) {
+                println!("Found module name: {:?} at {idx}", sbpt);
+                return Some(idx);
+            } else {
+                println!("Couldn't find {}", name);
+            }
+        }
+        None
     }
 
     pub fn src_file(&self, idx: usize) -> (PathBuf, &str) {
