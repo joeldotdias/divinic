@@ -1,5 +1,7 @@
 use std::{fs, path::PathBuf};
 
+use ast::ast::Module;
+
 use crate::{
     lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor},
     parser::Parser,
@@ -9,6 +11,7 @@ use crate::{
 pub struct ParseSess {
     pub source_files: Vec<SourceFile>,
     pub curr: u16,
+    pub modules: Vec<Module>,
 }
 
 impl ParseSess {
@@ -18,10 +21,12 @@ impl ParseSess {
         ParseSess {
             source_files,
             curr: 0,
+            modules: Vec::new(),
         }
     }
 
     pub fn mk_ast(&mut self) {
+        println!("\n\nHere\n\n");
         for (i, f) in self.source_files.iter().enumerate() {
             self.curr = i as u16;
 
@@ -32,7 +37,7 @@ impl ParseSess {
                         let (filename, source) = self.src_file(e.loc.fid as usize);
                         e.report(filename.to_str().unwrap(), source);
                     }
-                    return;
+                    continue;
                 }
             };
 
@@ -46,11 +51,26 @@ impl ParseSess {
             // }
 
             let mut parser = Parser::new(&self, stream);
-            let _ast = parser.parse_module();
-            for e in parser.errs {
-                let (filename, source) = self.src_file(e.loc.fid as usize);
-                e.report(filename.to_str().unwrap(), source);
-            }
+            match parser.parse_module() {
+                Ok(parsed) => {
+                    for e in parser.errs {
+                        println!("{:?}", e);
+
+                        let (filename, source) = self.src_file(e.loc.fid as usize);
+                        e.report(filename.to_str().unwrap(), source);
+                    }
+                    self.modules.push(parsed);
+                }
+                Err(err) => {
+                    let mut errs = parser.errs;
+                    errs.push(err);
+                    for e in errs {
+                        let (filename, source) = self.src_file(e.loc.fid as usize);
+                        e.report(filename.to_str().unwrap(), source);
+                    }
+                    return;
+                }
+            };
         }
     }
 

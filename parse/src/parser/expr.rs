@@ -63,10 +63,11 @@ impl<'a> Parser<'a> {
 
             self.bump(); // move past infix token
 
-            if is_assignment_op(infix_op) {
+            if infix_op.is_assignment_op() {
                 let (right_expr, next_infix) = self.parse_expr_with_context(prec_info.0)?;
                 expr = Expr::Assign {
                     span: DUMMY_SPAN,
+                    op: infix_op,
                     lhs: Box::new(expr),
                     rhs: Box::new(right_expr),
                 };
@@ -210,21 +211,4 @@ pub fn prec_info_from_infix(op: BinaryOp) -> PrecInfo {
         BinaryOp::Add | BinaryOp::Sub => (Sum, Sum),
         BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => (Product, Product),
     }
-}
-
-pub fn is_assignment_op(op: BinaryOp) -> bool {
-    matches!(
-        op,
-        BinaryOp::Eq
-            | BinaryOp::AddEq
-            | BinaryOp::SubEq
-            | BinaryOp::MulEq
-            | BinaryOp::DivEq
-            | BinaryOp::ModEq
-            | BinaryOp::BitAndEq
-            | BinaryOp::BitXorEq
-            | BinaryOp::BitOrEq
-            | BinaryOp::ShlEq
-            | BinaryOp::ShrEq
-    )
 }

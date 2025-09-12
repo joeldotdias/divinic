@@ -156,6 +156,7 @@ pub enum Expr {
     },
     Assign {
         span: Span,
+        op: BinaryOp,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
@@ -246,6 +247,25 @@ pub enum BinaryOp {
     BitOrEq,
     ShlEq,
     ShrEq,
+}
+
+impl BinaryOp {
+    pub fn is_assignment_op(&self) -> bool {
+        matches!(
+            self,
+            BinaryOp::Eq
+                | BinaryOp::AddEq
+                | BinaryOp::SubEq
+                | BinaryOp::MulEq
+                | BinaryOp::DivEq
+                | BinaryOp::ModEq
+                | BinaryOp::BitAndEq
+                | BinaryOp::BitXorEq
+                | BinaryOp::BitOrEq
+                | BinaryOp::ShlEq
+                | BinaryOp::ShrEq
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -377,9 +397,10 @@ impl Expr {
     pub fn constant(span: Span, value: Constant) -> Self {
         Self::Constant { span, value }
     }
-    pub fn assign(span: Span, lhs: Expr, rhs: Expr) -> Self {
+    pub fn assign(span: Span, op: BinaryOp, lhs: Expr, rhs: Expr) -> Self {
         Self::Assign {
             span,
+            op,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
         }
