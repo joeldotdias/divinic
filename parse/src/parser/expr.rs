@@ -41,11 +41,13 @@ impl<'a> Parser<'a> {
         &mut self,
         prec_threshold: Precedence,
     ) -> ParseResult<(Expr, Option<BinaryOp>)> {
+        let start = self.curr_tok.span;
+
         let mut expr = if let Some(prefix_op) = self.curr_tok.maybe_prefix_op() {
             self.bump();
             let (operand, _) = self.parse_expr_with_context(Precedence::Prefix)?;
             Expr::Unary {
-                span: DUMMY_SPAN,
+                span: start.merge(self.prev_tok.span),
                 op: prefix_op,
                 expr: Box::new(operand),
             }
@@ -88,13 +90,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_suffixed_atom(&mut self) -> ParseResult<Expr> {
+        let start = self.curr_tok.span;
         let mut expr = self.parse_base_expr()?;
 
         loop {
             match &self.curr_tok.kind {
                 TokenKind::LParen => {
-                    // func call
-                    todo!()
+                    // // func call
+                    // todo!()
+                    expr = self.parse_func_call(expr)?;
                 }
                 TokenKind::LBracket => {
                     // index expr
@@ -110,18 +114,16 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::PlusPlus => {
                     self.bump();
-                    // Expr
                     expr = Expr::Unary {
-                        span: DUMMY_SPAN,
+                        span: start.merge(self.prev_tok.span),
                         op: UnaryOp::PostInc,
                         expr: Box::new(expr),
                     }
                 }
                 TokenKind::MinusMinus => {
                     self.bump();
-                    // Expr
                     expr = Expr::Unary {
-                        span: DUMMY_SPAN,
+                        span: start.merge(self.prev_tok.span),
                         op: UnaryOp::PostDec,
                         expr: Box::new(expr),
                     }
@@ -134,6 +136,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_base_expr(&mut self) -> ParseResult<Expr> {
+        let start = self.curr_tok.span;
         match &self.curr_tok.kind {
             TokenKind::LParen => {
                 self.bump();
@@ -146,7 +149,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ident(_) => {
                 let name = self.parse_ident()?;
                 Ok(Expr::Ident {
-                    span: DUMMY_SPAN,
+                    span: start.merge(self.prev_tok.span),
                     name,
                 })
             }
@@ -167,19 +170,50 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_func_call(&mut self, label: Expr) -> ParseResult<Expr> {
+        let start = self.curr_tok.span;
+        let fn_name = if let Expr::Ident { name, .. } = label {
+            name
+        } else {
+            todo!() // err
+        };
+
+        if !self.eat_no_expect(&TokenKind::LParen) {}
+
+        let args = if self.eat_no_expect(&TokenKind::RParen) {
+            vec![]
+        } else {
+            let args = Parser::series_of(
+                self,
+                &|parser: &mut Parser| parser.parse_expr().map(Some),
+                Some(&TokenKind::Comma),
+            )?;
+            if !self.eat_no_expect(&TokenKind::RParen) {}
+            args
+        };
+
+        Ok(Expr::Call {
+            span: start.merge(self.prev_tok.span),
+            func: fn_name,
+            args,
+        })
+    }
+
     /*literal parsing will be improved*/
     fn parse_int_literal(&mut self, sym: EcoString) -> ParseResult<Expr> {
+        let span = self.curr_tok.span;
         self.bump();
         Ok(Expr::Constant {
-            span: DUMMY_SPAN,
+            span,
             value: Constant::Int(str::parse::<i64>(&sym).unwrap()),
         })
     }
 
     fn parse_string_literal(&mut self, sym: EcoString) -> ParseResult<Expr> {
+        let span = self.curr_tok.span;
         self.bump();
         Ok(Expr::Constant {
-            span: DUMMY_SPAN,
+            span,
             value: Constant::String(sym.to_string()),
         })
     }

@@ -1,9 +1,9 @@
-U32 while(U32 num, U32 j) {
-    return 2 * 8++ + 5;
+U32 thinger(U32 num, U32 j) {
+    return 2 * j++ + num;
 }
 
 U0 Main() {
-    I64 num = 0;
+    I64 num = thinger(3, 5);
     if(num == 0) {
         num++;
     } else if(num > 2) {
