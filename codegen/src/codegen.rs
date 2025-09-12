@@ -570,10 +570,13 @@ impl<'ctx> Codegen<'ctx> {
         else_branch: &Option<Box<HIRStmt>>,
     ) -> Result<(), EcoString> {
         let parent_fn = self.current_function.ok_or_else(|| "if outside function")?;
-
         let merge_bb = self.context.append_basic_block(parent_fn, "ifcont");
-
         let mut next_bb = self.context.append_basic_block(parent_fn, "if.next");
+        if let Some(curr_bb) = self.builder.get_insert_block() {
+            if curr_bb.get_terminator().is_none() {
+                let _ = self.builder.build_unconditional_branch(next_bb);
+            }
+        }
 
         for (i, (cond, stmt)) in cond_then_ladder.iter().enumerate() {
             let this_then = self
