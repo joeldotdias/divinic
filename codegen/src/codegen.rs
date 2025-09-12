@@ -15,6 +15,8 @@ use std::{collections::HashMap, ffi::CString};
 use crate::hir::{HIRDeclaration, HIRExpr, HIRExprGives, HIRModule, HIRStmt};
 use ast::ast::{BinaryOp, Constant, Expr, InbuiltType, Type, UnaryOp};
 
+pub type CodegenContext = Context;
+
 #[derive(Debug, Clone)]
 struct Variable<'ctx> {
     ptr: PointerValue<'ctx>,
@@ -38,7 +40,7 @@ pub struct Codegen<'ctx> {
 }
 
 impl<'ctx> Codegen<'ctx> {
-    pub fn new(context: &'ctx Context, name: &EcoString) -> Result<Self, EcoString> {
+    pub fn new(context: &'ctx Context, name: &String) -> Result<Self, EcoString> {
         let module = context.create_module(name);
         let builder = context.create_builder();
         let engine = module
@@ -481,7 +483,7 @@ impl<'ctx> Codegen<'ctx> {
                     _ => Err("Unsupported unary operator".into()),
                 }
             }
-            HIRExpr::Assign { lhs, rhs, .. } => {
+            HIRExpr::Assign { op, lhs, rhs, .. } => {
                 if let HIRExpr::Ident { name, .. } = lhs.as_ref() {
                     let rhs_val = self.compile_expr(rhs)?;
                     if let Some(var) = self.lookup_var(name) {
@@ -739,7 +741,7 @@ impl<'ctx> Codegen<'ctx> {
         // this is kinda crazy, TODO find a slightly better approach MAYBE?
         let libc_printf = self.module.add_function("printf", printf_type, None);
 
-        let printf_wrapper = self.module.add_function("Printf", printf_type, None);
+        let printf_wrapper = self.module.add_function("Print", printf_type, None);
 
         let entry = self.context.append_basic_block(printf_wrapper, "entry");
         let builder = self.context.create_builder();
@@ -760,7 +762,7 @@ impl<'ctx> Codegen<'ctx> {
             builder.build_return(Some(&zero)).unwrap();
         }
 
-        self.functions.insert("Printf".into(), printf_wrapper);
+        self.functions.insert("Print".into(), printf_wrapper);
     }
     fn cast_to_type(
         &self,

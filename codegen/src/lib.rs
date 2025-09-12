@@ -16,8 +16,8 @@ mod tests {
     #[test]
     fn test_if_statement_in_main() {
         let context = Context::create();
-        let mut codegen = Codegen::new(&context, &EcoString::from("test_module"))
-            .expect("Failed to create Codegen");
+        let mut codegen =
+            Codegen::new(&context, &"test_module".to_string()).expect("Failed to create Codegen");
 
         // let x = 0;
         let var_x = Stmt::VarDecl {
@@ -43,6 +43,7 @@ mod tests {
                         span: DUMMY_SPAN,
                         expr: Expr::assign(
                             DUMMY_SPAN,
+                            BinaryOp::Eq,
                             Expr::ident(DUMMY_SPAN, EcoString::from("x")),
                             Expr::constant(DUMMY_SPAN, Constant::Int(42)),
                         ),
@@ -55,6 +56,7 @@ mod tests {
                     span: DUMMY_SPAN,
                     expr: Expr::assign(
                         DUMMY_SPAN,
+                        BinaryOp::Eq,
                         Expr::ident(DUMMY_SPAN, EcoString::from("x")),
                         Expr::constant(DUMMY_SPAN, Constant::Int(99)),
                     ),
@@ -86,8 +88,8 @@ mod tests {
     #[test]
     fn test_return_variable() {
         let context = Context::create();
-        let mut codegen = Codegen::new(&context, &EcoString::from("test_module"))
-            .expect("Failed to create Codegen");
+        let mut codegen =
+            Codegen::new(&context, &"test_module".to_string()).expect("Failed to create Codegen");
 
         // I32 foo() { I32 y = 5; return y; }
         let var_decl = Stmt::VarDecl {

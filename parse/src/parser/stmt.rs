@@ -256,7 +256,7 @@ impl<'a> Parser<'a> {
             span: pspan.merge(self.prev_tok.span),
             expr: Expr::Call {
                 span: pspan,
-                func: "printf".into(),
+                func: "Print".into(),
                 args,
             },
         })

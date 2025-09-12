@@ -15,7 +15,7 @@ use inkwell::context::Context;
 fn main() {
     let context = Context::create();
     let mut codegen =
-        Codegen::new(&context, &EcoString::from("test_module")).expect("Failed to create Codegen");
+        Codegen::new(&context, &"test_module".to_string()).expect("Failed to create Codegen");
     let module = Module {
         decls: vec![
             // main function
@@ -44,6 +44,7 @@ fn main() {
                             )),
                             Some(Expr::assign(
                                 DUMMY_SPAN,
+                                BinaryOp::Eq,
                                 Expr::ident(DUMMY_SPAN, "i".into()),
                                 Expr::binary(
                                     DUMMY_SPAN,
@@ -75,6 +76,7 @@ fn main() {
                                         )),
                                         Some(Expr::assign(
                                             DUMMY_SPAN,
+                                            BinaryOp::Eq,
                                             Expr::ident(DUMMY_SPAN, "j".into()),
                                             Expr::binary(
                                                 DUMMY_SPAN,

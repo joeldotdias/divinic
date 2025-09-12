@@ -72,6 +72,7 @@ pub enum HIRExpr {
     },
     Assign {
         span: Span,
+        op: BinaryOp,
         lhs: Box<HIRExpr>,
         rhs: Box<HIRExpr>,
         ty: Type,
@@ -368,8 +369,9 @@ impl HIRContext {
                 value,
                 ty: Type::Inbuilt(InbuiltType::U0),
             },
-            Expr::Assign { span, lhs, rhs } => HIRExpr::Assign {
+            Expr::Assign { span, op, lhs, rhs } => HIRExpr::Assign {
                 span,
+                op,
                 lhs: Box::new(Self::ast_expr_to_hir(*lhs)),
                 rhs: Box::new(Self::ast_expr_to_hir(*rhs)),
                 ty: Type::Inbuilt(InbuiltType::U0),
