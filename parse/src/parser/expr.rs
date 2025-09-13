@@ -245,7 +245,6 @@ impl<'a> Parser<'a> {
 
     fn parse_string_literal(&mut self, sym: EcoString) -> ParseResult<Expr> {
         let span = self.curr_tok.span;
-        println!("Curr tok: {:?}", self.curr_tok);
         self.bump();
         // the expects here are only because if this happens its a problem with the lexer
         // better to panic so i know there's something wrong that to report this

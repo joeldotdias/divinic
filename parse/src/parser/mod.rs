@@ -45,38 +45,12 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_module(&mut self) -> Result<Module, ParseErr> {
-        // let is_void_ty = self.look_ahead(0, |t| t == &TokenKind::U0);
-        // let is_lparen = self.look_ahead(2, |t| t == &TokenKind::LParen);
-        // let is_rparen = self.look_ahead(3, |t| t == &TokenKind::RParen);
-        // println!("is_u0_ty: {}", is_void_ty);
-        // println!("is_lparen: {}", is_lparen);
-        // println!("is_rparen: {}", is_rparen);
-        //
-        // self.bump();
-        // println!("After bumping");
-        // let is_lparen_after_bump = self.look_ahead(1, |t| t == &TokenKind::LParen);
-        // println!("is_lparen after bump: {}", is_lparen_after_bump);
-        // self.bump();
-        // self.bump();
-        // self.bump();
-        // println!("After 3 bumps: {:?}", self.curr_tok);
-        // let is_i64_ty = self.look_ahead(1, |t| t == &TokenKind::I64);
-        // println!("is_i64_ty after 3 bumps: {}", is_i64_ty);
-
-        // let mut decls = Vec::new();
-        // let decl = self.parse_top_level()?;
-        // decls.push(decl);
-
         let decls = Parser::series_of(self, &Parser::parse_top_level, None)?;
-        // let dbg_str = format!("{:#?}", decls);
-        // fs::write("ast_dump.txt", dbg_str).unwrap();
-
         Ok(Module { decls })
     }
 
     pub fn parse_ty(&mut self) -> Result<Type, ParseErr> {
         use TokenKind::*;
-        println!("Got token for ty => {:?}", self.curr_tok);
         let ty = match &self.curr_tok.kind {
             Ident(label) => Type::Named(label.clone()),
             U0 => Type::Inbuilt(InbuiltType::U0),
@@ -93,8 +67,6 @@ impl<'a> Parser<'a> {
             _ => todo!(),
         };
         self.bump();
-
-        println!("Type: {:?}", ty);
 
         Ok(ty)
     }
@@ -206,7 +178,6 @@ impl<'a> Parser<'a> {
                 self.curr_tok.span,
             );
 
-            println!("Problem {ident}");
             if recover {
                 self.errs.push(err);
             } else {

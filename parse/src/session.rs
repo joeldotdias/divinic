@@ -82,7 +82,6 @@ impl ParseSess {
         };
 
         for (midx, module) in self.modules.iter().enumerate() {
-            println!("\n\nModule {}\n{:#?}\n\n", midx, module);
             let mut local_scope = Scope::new();
 
             for decl in &module.decls {

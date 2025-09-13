@@ -16,7 +16,7 @@ fn main() {
         ]
     };
     let mut sesh = ParseSess::new(files);
-    dbg!(&sesh);
+    // dbg!(&sesh);
     sesh.mk_asteez();
     let _ = sesh.build_symbol_tables();
 
@@ -26,7 +26,7 @@ fn main() {
 
     let hir_modules = HIRContext::make(sesh.modules);
     codegen.compile(&hir_modules).expect("Compilation failed");
-    codegen.dump_ir();
+    // codegen.dump_ir();
     // may be bad practice but patience kids
     codegen.emit_object_file("target/main.o");
     println!("File emitted to target/main");
