@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf};
 use ast::ast::{Declaration, Label, Module, Type};
 
 use crate::{
+    AnnotatedModule,
     lexer::lex_token_trees,
     parser::Parser,
     symtab::{ModuleScope, Scope, SymbolTable},
@@ -131,7 +132,6 @@ impl ParseSess {
             sym_tab.module_scopes[midx].resolved_symbols = resolved;
         }
 
-        println!("Symbol table=>\n{:#?}", sym_tab);
         self.sym_tab = Some(sym_tab);
 
         Ok(())
@@ -142,8 +142,6 @@ impl ParseSess {
             let sbpt = source_file.name.to_str();
             if sbpt == Some(name) {
                 return Some(idx);
-            } else {
-                println!("Couldn't find {}", name);
             }
         }
         None
@@ -155,6 +153,33 @@ impl ParseSess {
         } else {
             None
         }
+    }
+
+    pub fn mk_annoted_modules(&self) -> Vec<AnnotatedModule> {
+        if self.sym_tab.is_none() {
+            panic!("No symbol table whatttttt");
+        }
+
+        let sym_tab = self.sym_tab.as_ref().unwrap();
+        let mut amods = Vec::new();
+
+        for (idx, module) in self.modules.iter().enumerate() {
+            let name = self.source_files[idx]
+                .name
+                .to_string_lossy()
+                .into_owned()
+                .into();
+
+            let resolved_symbols = sym_tab.module_scopes[idx].resolved_symbols.symbols.clone();
+
+            amods.push(AnnotatedModule {
+                name,
+                ast: module.clone(),
+                resolved_symbols,
+            });
+        }
+
+        amods
     }
 
     pub fn src_file(&self, idx: usize) -> (PathBuf, &str) {

@@ -1,7 +1,19 @@
+use std::collections::HashMap;
+
+use ast::ast::{Label, Module, Type};
+use ecow::EcoString;
+
 pub mod lexer;
 pub mod parser;
 pub mod session;
 pub mod symtab;
+
+#[derive(Clone, Debug)]
+pub struct AnnotatedModule {
+    pub name: EcoString,
+    pub ast: Module,
+    pub resolved_symbols: HashMap<Label, Type>,
+}
 
 #[cfg(test)]
 mod tests {
