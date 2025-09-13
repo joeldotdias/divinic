@@ -13,8 +13,8 @@ use inkwell::{
 };
 use std::{collections::HashMap, ffi::CString};
 
-use crate::hir::{HIRCase, HIRDeclaration, HIRExpr, HIRExprGives, HIRModule, HIRStmt};
-use ast::ast::{BinaryOp, Constant, Expr, InbuiltType, Type, UnaryOp};
+use crate::hir::{HIRCase, HIRDeclaration, HIRExpr, HIRExprGives, HIRModule, HIRStmt, HIRType};
+use ast::ast::{BinaryOp, Constant, InbuiltType, UnaryOp};
 
 pub type CodegenContext = Context;
 
@@ -22,7 +22,7 @@ pub type CodegenContext = Context;
 struct Variable<'ctx> {
     ptr: PointerValue<'ctx>,
     element_type: BasicTypeEnum<'ctx>,
-    native_type: Type,
+    native_type: HIRType,
 }
 
 pub struct Codegen<'ctx> {
@@ -277,7 +277,7 @@ impl<'ctx> Codegen<'ctx> {
                 let l_val = self.cast_to_type(l_val, &expr_ty)?;
                 let r_val = self.cast_to_type(r_val, &expr_ty)?;
                 let res: BasicValueEnum = match expr.ty() {
-                    Type::Inbuilt(InbuiltType::F64) => {
+                    HIRType::Inbuilt(InbuiltType::F64) => {
                         let l_float = l_val.into_float_value();
                         let r_float = r_val.into_float_value();
                         let res: BasicValueEnum<'ctx> = match op {
@@ -336,7 +336,7 @@ impl<'ctx> Codegen<'ctx> {
                         res
                     }
 
-                    Type::Inbuilt(t)
+                    HIRType::Inbuilt(t)
                         if matches!(
                             t,
                             InbuiltType::I8
@@ -440,7 +440,7 @@ impl<'ctx> Codegen<'ctx> {
                             _ => return Err("Unsupported integer binary operator".into()),
                         }
                     }
-                    Type::Inbuilt(InbuiltType::Bool) => {
+                    HIRType::Inbuilt(InbuiltType::Bool) => {
                         let l_bool = l_val.into_int_value();
                         let r_bool = r_val.into_int_value();
                         match op {
@@ -467,7 +467,7 @@ impl<'ctx> Codegen<'ctx> {
                             _ => return Err("Unsupported bool binary operator".into()),
                         }
                     }
-                    Type::Pointer(_) => return Err("Pointers aren't yet supported!".into()),
+                    HIRType::Pointer(_) => return Err("Pointers aren't yet supported!".into()),
                     _ => return Err("Unsupported type for binary operation".into()),
                 };
                 Ok(res)
@@ -561,6 +561,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call_val = call_site.try_as_basic_value().left().unwrap();
                 Ok(call_val)
             }
+            HIRExpr::ArrElems { .. } => todo!(),
             HIRExpr::Index { .. } => todo!(),
             HIRExpr::Conditional { .. } => todo!(),
             HIRExpr::Cast { .. } => todo!(),
@@ -912,7 +913,7 @@ impl<'ctx> Codegen<'ctx> {
     fn cast_to_type(
         &self,
         value: BasicValueEnum<'ctx>,
-        target_type: &Type,
+        target_type: &HIRType,
     ) -> Result<BasicValueEnum<'ctx>, EcoString> {
         let target_llvm = self.to_llvm_basic_type(target_type)?;
 
@@ -934,7 +935,7 @@ impl<'ctx> Codegen<'ctx> {
             (BasicValueEnum::IntValue(iv), BasicTypeEnum::FloatType(target_float)) => {
                 let is_signed = matches!(
                     target_type,
-                    Type::Inbuilt(
+                    HIRType::Inbuilt(
                         InbuiltType::I8 | InbuiltType::I16 | InbuiltType::I32 | InbuiltType::I64
                     )
                 );
@@ -951,7 +952,7 @@ impl<'ctx> Codegen<'ctx> {
             (BasicValueEnum::FloatValue(fv), BasicTypeEnum::IntType(target_int)) => {
                 let is_signed = matches!(
                     target_type,
-                    Type::Inbuilt(
+                    HIRType::Inbuilt(
                         InbuiltType::I8 | InbuiltType::I16 | InbuiltType::I32 | InbuiltType::I64
                     )
                 );
@@ -970,26 +971,26 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn from_llvm_basic_type(&self, llvm_ty: BasicTypeEnum<'ctx>) -> Result<Type, EcoString> {
+    fn from_llvm_basic_type(&self, llvm_ty: BasicTypeEnum<'ctx>) -> Result<HIRType, EcoString> {
         match llvm_ty {
             BasicTypeEnum::IntType(t) => match t.get_bit_width() {
-                8 => Ok(Type::Inbuilt(InbuiltType::I8)),
-                16 => Ok(Type::Inbuilt(InbuiltType::I16)),
-                32 => Ok(Type::Inbuilt(InbuiltType::I32)),
-                64 => Ok(Type::Inbuilt(InbuiltType::I64)),
+                8 => Ok(HIRType::Inbuilt(InbuiltType::I8)),
+                16 => Ok(HIRType::Inbuilt(InbuiltType::I16)),
+                32 => Ok(HIRType::Inbuilt(InbuiltType::I32)),
+                64 => Ok(HIRType::Inbuilt(InbuiltType::I64)),
                 _ => Err("Unsupported int bit width".into()),
             },
-            BasicTypeEnum::FloatType(_) => Ok(Type::Inbuilt(InbuiltType::F64)),
-            BasicTypeEnum::PointerType(_) => {
-                Ok(Type::Pointer(Box::new(Type::Inbuilt(InbuiltType::U8))))
-            }
+            BasicTypeEnum::FloatType(_) => Ok(HIRType::Inbuilt(InbuiltType::F64)),
+            BasicTypeEnum::PointerType(_) => Ok(HIRType::Pointer(Box::new(HIRType::Inbuilt(
+                InbuiltType::U8,
+            )))),
             _ => Err("Unsupported LLVM type".into()),
         }
     }
 
-    fn to_llvm_basic_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, EcoString> {
+    fn to_llvm_basic_type(&self, ty: &HIRType) -> Result<BasicTypeEnum<'ctx>, EcoString> {
         match ty {
-            Type::Inbuilt(i) => match i {
+            HIRType::Inbuilt(i) => match i {
                 InbuiltType::U0 => Err("U0/void is not a basic type".into()),
                 InbuiltType::U8 | InbuiltType::I8 => Ok(self.context.i8_type().into()),
                 InbuiltType::U16 | InbuiltType::I16 => Ok(self.context.i16_type().into()),
@@ -998,41 +999,25 @@ impl<'ctx> Codegen<'ctx> {
                 InbuiltType::F64 => Ok(self.context.f64_type().into()),
                 InbuiltType::Bool => Ok(self.context.bool_type().into()),
             },
-            Type::Named(name) => self
+            HIRType::Named(name) => self
                 .struct_types
                 .get(name)
                 .map(|t| t.as_basic_type_enum())
                 .ok_or_else(|| format!("Unknown named type: {}", name).into()),
-            Type::Pointer(_inner) => Ok(self.context.ptr_type(AddressSpace::default()).into()),
-            Type::Array(inner, maybe_size_expr) => {
-                let inner_ty = self.to_llvm_basic_type(inner)?;
-                let size = if let Some(size_expr) = maybe_size_expr {
-                    match size_expr {
-                        Expr::Constant {
-                            value: Constant::Int(n),
-                            ..
-                        } => *n as u32,
-                        Expr::Constant {
-                            value: Constant::UInt(u),
-                            ..
-                        } => *u as u32,
-                        _ => return Err("Array size must be a constant integer".into()),
-                    }
-                } else {
-                    return Err("Unsized arrays not supported".into());
-                };
-                Ok(inner_ty.array_type(size).into())
-            }
-            Type::Function { .. } => Err("Function types are not basic types".into()),
+            HIRType::Pointer(_inner) => Ok(self.context.ptr_type(AddressSpace::default()).into()),
+            HIRType::Array { .. } => todo!(),
+            HIRType::Function { .. } => Err("Function types are not basic types".into()),
+            HIRType::Reference { .. } => todo!(),
+            HIRType::Void => todo!(),
         }
     }
 
     fn to_llvm_return_type(
         &self,
-        ty: &Type,
+        ty: &HIRType,
     ) -> Result<inkwell::types::AnyTypeEnum<'ctx>, EcoString> {
         match ty {
-            Type::Inbuilt(InbuiltType::U0) => Ok(self.context.void_type().as_any_type_enum()),
+            HIRType::Inbuilt(InbuiltType::U0) => Ok(self.context.void_type().as_any_type_enum()),
             _ => Ok(self.to_llvm_basic_type(ty)?.as_any_type_enum()),
         }
     }
@@ -1048,7 +1033,7 @@ impl<'ctx> Codegen<'ctx> {
         name: EcoString,
         ptr: PointerValue<'ctx>,
         ty: BasicTypeEnum<'ctx>,
-        native: Type,
+        native: HIRType,
     ) {
         self.variables.last_mut().unwrap().insert(
             name,

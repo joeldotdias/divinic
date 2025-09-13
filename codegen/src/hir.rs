@@ -19,20 +19,20 @@ pub enum HIRDeclaration {
     Var {
         span: Span,
         name: Label,
-        ty: Type,
+        ty: HIRType,
         init: Option<HIRExpr>,
     },
     Func {
         span: Span,
         name: Label,
-        ret_ty: Type,
+        ret_ty: HIRType,
         params: Vec<HIRParam>,
         body: HIRStmt,
     },
     Class {
         span: Span,
         name: Label,
-        fields: Vec<(Type, Label)>,
+        fields: Vec<(HIRType, Label)>,
     },
     Enum {
         span: Span,
@@ -49,7 +49,7 @@ pub enum HIRDeclaration {
 pub struct HIRParam {
     pub span: Span,
     pub name: Label,
-    pub ty: Type,
+    pub ty: HIRType,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -64,62 +64,67 @@ pub enum HIRExpr {
     Ident {
         span: Span,
         name: Label,
-        ty: Type,
+        ty: HIRType,
     },
     Constant {
         span: Span,
         value: Constant,
-        ty: Type,
+        ty: HIRType,
     },
     Assign {
         span: Span,
         op: BinaryOp,
         lhs: Box<HIRExpr>,
         rhs: Box<HIRExpr>,
-        ty: Type,
+        ty: HIRType,
     },
     Binary {
         span: Span,
         op: BinaryOp,
         lhs: Box<HIRExpr>,
         rhs: Box<HIRExpr>,
-        ty: Type,
+        ty: HIRType,
     },
     Unary {
         span: Span,
         op: UnaryOp,
         expr: Box<HIRExpr>,
-        ty: Type,
+        ty: HIRType,
     },
     Call {
         span: Span,
         func: Label,
         args: Vec<HIRExpr>,
-        ty: Type,
+        ty: HIRType,
+    },
+    ArrElems {
+        span: Span,
+        elems: Vec<HIRExpr>,
+        ty: HIRType,
     },
     Member {
         span: Span,
         base: Box<HIRExpr>,
         field: Box<HIRExpr>,
         arrow: bool,
-        ty: Type,
+        ty: HIRType,
     },
     Index {
         span: Span,
         base: Box<HIRExpr>,
         index: Box<HIRExpr>,
-        ty: Type,
+        ty: HIRType,
     },
     Conditional {
         span: Span,
         cond: Box<HIRExpr>,
         then_expr: Box<HIRExpr>,
         else_expr: Box<HIRExpr>,
-        ty: Type,
+        ty: HIRType,
     },
     Cast {
         span: Span,
-        ty: Type,
+        ty: HIRType,
         expr: Box<HIRExpr>,
     },
 }
@@ -129,7 +134,7 @@ pub enum HIRStmt {
     Expr {
         span: Span,
         expr: HIRExpr,
-        ty: Type,
+        ty: HIRType,
     },
     Block {
         span: Span,
@@ -138,7 +143,7 @@ pub enum HIRStmt {
     VarDecl {
         span: Span,
         name: Label,
-        ty: Type,
+        ty: HIRType,
         init: Option<HIRExpr>,
     },
     If {
@@ -187,8 +192,54 @@ type SymTable = HashMap<EcoString, SymEntry>;
 
 #[derive(Clone, Debug)]
 struct SymEntry {
-    ty: Type,
-    params: Option<Vec<Type>>,
+    ty: HIRType,
+    params: Option<Vec<HIRType>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum HIRType {
+    Inbuilt(InbuiltType),
+    Named(Label),
+    Pointer(Box<HIRType>),
+    Reference {
+        ty: Box<HIRType>,
+        mutable: bool,
+    },
+    Array(Box<HIRType>, Option<Box<HIRExpr>>),
+    Function {
+        params: Vec<HIRType>,
+        ret: Box<HIRType>,
+        varargs: bool,
+    },
+    Void,
+}
+
+impl From<Type> for HIRType {
+    fn from(ty: Type) -> Self {
+        match ty {
+            Type::Inbuilt(t) => HIRType::Inbuilt(t),
+            Type::Named(name) => HIRType::Named(name),
+            Type::Pointer(inner) => HIRType::Pointer(Box::new((*inner).into())),
+            Type::Array(inner, size) => {
+                let inner_hir = (*inner).into();
+                let size_hir = size.map(|e| Box::new(HIRContext::ast_expr_to_hir(e)));
+                HIRType::Array(Box::new(inner_hir), size_hir)
+            }
+            Type::Function {
+                params,
+                ret,
+                varargs,
+            } => {
+                let params_hir = params.into_iter().map(|p| p.into()).collect();
+                let ret_hir = Box::new((*ret).into());
+                HIRType::Function {
+                    params: params_hir,
+                    ret: ret_hir,
+                    varargs,
+                }
+            }
+        }
+    }
 }
 
 pub struct HIRContext;
@@ -226,7 +277,7 @@ impl HIRContext {
             } => HIRDeclaration::Var {
                 span,
                 name,
-                ty: ty.clone(),
+                ty: ty.into(),
                 init: init.map(Self::ast_expr_to_hir),
             },
             Declaration::Func {
@@ -238,13 +289,15 @@ impl HIRContext {
             } => HIRDeclaration::Func {
                 span,
                 name,
-                ret_ty: ret_ty.clone(),
+                ret_ty: ret_ty.into(),
                 params: params.into_iter().map(Self::ast_param_to_hir).collect(),
                 body: Self::ast_stmt_to_hir(body),
             },
-            Declaration::Class { span, name, fields } => {
-                HIRDeclaration::Class { span, name, fields }
-            }
+            Declaration::Class { span, name, fields } => HIRDeclaration::Class {
+                span,
+                name,
+                fields: fields.into_iter().map(|(t, s)| (t.into(), s)).collect(),
+            },
             Declaration::Enum {
                 span,
                 name,
@@ -262,7 +315,7 @@ impl HIRContext {
         HIRParam {
             span: param.span,
             name: param.name,
-            ty: param.ty,
+            ty: param.ty.into(),
         }
     }
 
@@ -279,7 +332,7 @@ impl HIRContext {
             Stmt::Expr { span, expr } => HIRStmt::Expr {
                 span,
                 expr: Self::ast_expr_to_hir(expr),
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Stmt::Block { span, stmts } => HIRStmt::Block {
                 span,
@@ -293,7 +346,7 @@ impl HIRContext {
             } => HIRStmt::VarDecl {
                 span,
                 name,
-                ty,
+                ty: ty.into(),
                 init: init.map(Self::ast_expr_to_hir),
             },
             Stmt::If {
@@ -357,38 +410,43 @@ impl HIRContext {
             Expr::Ident { span, name } => HIRExpr::Ident {
                 span,
                 name,
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Constant { span, value } => HIRExpr::Constant {
                 span,
                 value,
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Assign { span, op, lhs, rhs } => HIRExpr::Assign {
                 span,
                 op,
                 lhs: Box::new(Self::ast_expr_to_hir(*lhs)),
                 rhs: Box::new(Self::ast_expr_to_hir(*rhs)),
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Binary { span, op, lhs, rhs } => HIRExpr::Binary {
                 span,
                 op,
                 lhs: Box::new(Self::ast_expr_to_hir(*lhs)),
                 rhs: Box::new(Self::ast_expr_to_hir(*rhs)),
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Unary { span, op, expr } => HIRExpr::Unary {
                 span,
                 op,
                 expr: Box::new(Self::ast_expr_to_hir(*expr)),
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Call { span, func, args } => HIRExpr::Call {
                 span,
                 func,
                 args: args.into_iter().map(Self::ast_expr_to_hir).collect(),
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
+            },
+            Expr::ArrElems { span, elems, .. } => HIRExpr::ArrElems {
+                span,
+                elems: elems.into_iter().map(Self::ast_expr_to_hir).collect(),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Member {
                 span,
@@ -400,13 +458,13 @@ impl HIRContext {
                 base: Box::new(Self::ast_expr_to_hir(*base)),
                 field: Box::new(Self::ast_expr_to_hir(*field)),
                 arrow,
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Index { span, base, index } => HIRExpr::Index {
                 span,
                 base: Box::new(Self::ast_expr_to_hir(*base)),
                 index: Box::new(Self::ast_expr_to_hir(*index)),
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Conditional {
                 span,
@@ -418,14 +476,13 @@ impl HIRContext {
                 cond: Box::new(Self::ast_expr_to_hir(*cond)),
                 then_expr: Box::new(Self::ast_expr_to_hir(*then_expr)),
                 else_expr: Box::new(Self::ast_expr_to_hir(*else_expr)),
-                ty: Type::Inbuilt(InbuiltType::U0),
+                ty: HIRType::Inbuilt(InbuiltType::U0),
             },
             Expr::Cast { span, ty, expr } => HIRExpr::Cast {
                 span,
-                ty: *ty,
+                ty: (*ty).into(),
                 expr: Box::new(Self::ast_expr_to_hir(*expr)),
             },
-            Expr::ArrElems { .. } => todo!(),
         }
     }
 
@@ -515,7 +572,7 @@ impl HIRContext {
                 name, ret_ty, body, ..
             } = decl
             {
-                if name == "main" && *ret_ty == Type::Inbuilt(InbuiltType::U0) {
+                if name == "main" && *ret_ty == HIRType::Inbuilt(InbuiltType::U0) {
                     let original_body = std::mem::replace(
                         body,
                         HIRStmt::Block {
@@ -533,14 +590,14 @@ impl HIRContext {
                                 expr: Some(HIRExpr::Constant {
                                     span: DUMMY_SPAN,
                                     value: Constant::Int(0),
-                                    ty: Type::Inbuilt(InbuiltType::I32),
+                                    ty: HIRType::Inbuilt(InbuiltType::I32),
                                 }),
                             },
                         ],
                     };
 
-                    *ret_ty = Type::Inbuilt(InbuiltType::I32);
-                } else if *ret_ty == Type::Inbuilt(InbuiltType::U0) {
+                    *ret_ty = HIRType::Inbuilt(InbuiltType::I32);
+                } else if *ret_ty == HIRType::Inbuilt(InbuiltType::U0) {
                     Self::append_void_return(body);
                 }
             }
@@ -579,7 +636,7 @@ impl HIRContext {
         stmt: &mut HIRStmt,
         locals: &mut SymTable,
         globals: &SymTable,
-        expected_ret_ty: Option<&Type>,
+        expected_ret_ty: Option<&HIRType>,
     ) {
         match stmt {
             HIRStmt::Expr { expr, ty, .. } => {
@@ -674,12 +731,12 @@ impl HIRContext {
             }
             HIRExpr::Constant { value, ty, .. } => {
                 *ty = match value {
-                    Constant::Int(_) => Type::Inbuilt(InbuiltType::I64),
-                    Constant::UInt(_) => Type::Inbuilt(InbuiltType::U64),
-                    Constant::Float(_) => Type::Inbuilt(InbuiltType::F64),
-                    Constant::Bool(_) => Type::Inbuilt(InbuiltType::Bool),
-                    Constant::Char(_) => Type::Inbuilt(InbuiltType::U8),
-                    _ => Type::Inbuilt(InbuiltType::U0),
+                    Constant::Int(_) => HIRType::Inbuilt(InbuiltType::I64),
+                    Constant::UInt(_) => HIRType::Inbuilt(InbuiltType::U64),
+                    Constant::Float(_) => HIRType::Inbuilt(InbuiltType::F64),
+                    Constant::Bool(_) => HIRType::Inbuilt(InbuiltType::Bool),
+                    Constant::Char(_) => HIRType::Inbuilt(InbuiltType::U8),
+                    _ => HIRType::Inbuilt(InbuiltType::U0),
                 };
             }
             HIRExpr::Assign { lhs, rhs, ty, .. } => {
@@ -703,7 +760,6 @@ impl HIRContext {
                 }
 
                 if let Some(entry) = locals.get(func).or_else(|| globals.get(func)) {
-                    // If function has param types, unify/cast args
                     if let Some(param_types) = &entry.params {
                         assert_eq!(
                             args.len(),
@@ -718,11 +774,34 @@ impl HIRContext {
                         }
                     }
 
-                    // Call type = function return type
                     *ty = entry.ty.clone();
                 } else {
-                    *ty = Type::Inbuilt(InbuiltType::U0);
+                    *ty = HIRType::Inbuilt(InbuiltType::U0);
                 }
+            }
+
+            HIRExpr::ArrElems { elems, ty, .. } => {
+                for e in elems.iter_mut() {
+                    Self::infer_expr(e, locals, globals);
+                }
+
+                let elem_ty = if let Some(first) = elems.first() {
+                    elems
+                        .iter()
+                        .skip(1)
+                        .fold(first.ty(), |acc, e| Self::unify_types(acc, e.ty()))
+                        .into()
+                } else {
+                    HIRType::Inbuilt(InbuiltType::U0)
+                };
+
+                let size_expr = HIRExpr::Constant {
+                    span: DUMMY_SPAN, // TODO
+                    value: Constant::UInt(elems.len() as u64),
+                    ty: HIRType::Inbuilt(InbuiltType::U64),
+                };
+
+                *ty = HIRType::Array(Box::new(elem_ty), Some(Box::new(size_expr)));
             }
 
             HIRExpr::Member { base, ty, .. } => {
@@ -754,64 +833,62 @@ impl HIRContext {
         }
     }
 
-    fn unify_types(lhs: Type, rhs: Type) -> Type {
+    fn unify_types(lhs: HIRType, rhs: HIRType) -> HIRType {
         match (lhs, rhs) {
-            (Type::Inbuilt(InbuiltType::F64), _) | (_, Type::Inbuilt(InbuiltType::F64)) => {
-                Type::Inbuilt(InbuiltType::F64)
+            (HIRType::Inbuilt(InbuiltType::F64), _) | (_, HIRType::Inbuilt(InbuiltType::F64)) => {
+                HIRType::Inbuilt(InbuiltType::F64)
             }
-            (Type::Inbuilt(InbuiltType::I64), _) | (_, Type::Inbuilt(InbuiltType::I64)) => {
-                Type::Inbuilt(InbuiltType::I64)
+            (HIRType::Inbuilt(InbuiltType::I64), _) | (_, HIRType::Inbuilt(InbuiltType::I64)) => {
+                HIRType::Inbuilt(InbuiltType::I64)
             }
-            (Type::Inbuilt(InbuiltType::I32), _) | (_, Type::Inbuilt(InbuiltType::I32)) => {
-                Type::Inbuilt(InbuiltType::I32)
+            (HIRType::Inbuilt(InbuiltType::I32), _) | (_, HIRType::Inbuilt(InbuiltType::I32)) => {
+                HIRType::Inbuilt(InbuiltType::I32)
             }
-            (Type::Inbuilt(InbuiltType::I8), Type::Inbuilt(InbuiltType::U8))
-            | (Type::Inbuilt(InbuiltType::U8), Type::Inbuilt(InbuiltType::I8)) => {
-                Type::Inbuilt(InbuiltType::I8)
+            (HIRType::Inbuilt(InbuiltType::I8), HIRType::Inbuilt(InbuiltType::U8))
+            | (HIRType::Inbuilt(InbuiltType::U8), HIRType::Inbuilt(InbuiltType::I8)) => {
+                HIRType::Inbuilt(InbuiltType::I8)
             }
             (t, _) => t,
         }
     }
 
     // sybau
-    fn is_type_compatible(expr_ty: &Type, ret_ty: &Type) -> bool {
+    fn is_type_compatible(expr_ty: &HIRType, ret_ty: &HIRType) -> bool {
         match (expr_ty, ret_ty) {
             (a, b) if a == b => true,
 
-            (Type::Inbuilt(I8), Type::Inbuilt(I16))
-            | (Type::Inbuilt(I8), Type::Inbuilt(I32))
-            | (Type::Inbuilt(I8), Type::Inbuilt(I64)) => true,
+            (HIRType::Inbuilt(I8), HIRType::Inbuilt(I16))
+            | (HIRType::Inbuilt(I8), HIRType::Inbuilt(I32))
+            | (HIRType::Inbuilt(I8), HIRType::Inbuilt(I64)) => true,
 
-            (Type::Inbuilt(U8), Type::Inbuilt(I16))
-            | (Type::Inbuilt(U8), Type::Inbuilt(I32))
-            | (Type::Inbuilt(U8), Type::Inbuilt(I64))
-            | (Type::Inbuilt(U8), Type::Inbuilt(U16))
-            | (Type::Inbuilt(U8), Type::Inbuilt(U32))
-            | (Type::Inbuilt(U8), Type::Inbuilt(U64)) => true,
+            (HIRType::Inbuilt(U8), HIRType::Inbuilt(I16))
+            | (HIRType::Inbuilt(U8), HIRType::Inbuilt(I32))
+            | (HIRType::Inbuilt(U8), HIRType::Inbuilt(I64))
+            | (HIRType::Inbuilt(U8), HIRType::Inbuilt(U16))
+            | (HIRType::Inbuilt(U8), HIRType::Inbuilt(U32))
+            | (HIRType::Inbuilt(U8), HIRType::Inbuilt(U64)) => true,
 
-            (Type::Inbuilt(I16), Type::Inbuilt(I32)) | (Type::Inbuilt(I16), Type::Inbuilt(I64)) => {
-                true
-            }
+            (HIRType::Inbuilt(I16), HIRType::Inbuilt(I32))
+            | (HIRType::Inbuilt(I16), HIRType::Inbuilt(I64)) => true,
 
-            (Type::Inbuilt(U16), Type::Inbuilt(I32))
-            | (Type::Inbuilt(U16), Type::Inbuilt(I64))
-            | (Type::Inbuilt(U16), Type::Inbuilt(U32))
-            | (Type::Inbuilt(U16), Type::Inbuilt(U64)) => true,
+            (HIRType::Inbuilt(U16), HIRType::Inbuilt(I32))
+            | (HIRType::Inbuilt(U16), HIRType::Inbuilt(I64))
+            | (HIRType::Inbuilt(U16), HIRType::Inbuilt(U32))
+            | (HIRType::Inbuilt(U16), HIRType::Inbuilt(U64)) => true,
 
-            (Type::Inbuilt(I32), Type::Inbuilt(I64)) => true,
+            (HIRType::Inbuilt(I32), HIRType::Inbuilt(I64)) => true,
 
-            (Type::Inbuilt(U32), Type::Inbuilt(I64)) | (Type::Inbuilt(U32), Type::Inbuilt(U64)) => {
-                true
-            }
+            (HIRType::Inbuilt(U32), HIRType::Inbuilt(I64))
+            | (HIRType::Inbuilt(U32), HIRType::Inbuilt(U64)) => true,
 
-            (Type::Inbuilt(I8), Type::Inbuilt(F64))
-            | (Type::Inbuilt(I16), Type::Inbuilt(F64))
-            | (Type::Inbuilt(I32), Type::Inbuilt(F64))
-            | (Type::Inbuilt(I64), Type::Inbuilt(F64))
-            | (Type::Inbuilt(U8), Type::Inbuilt(F64))
-            | (Type::Inbuilt(U16), Type::Inbuilt(F64))
-            | (Type::Inbuilt(U32), Type::Inbuilt(F64))
-            | (Type::Inbuilt(U64), Type::Inbuilt(F64)) => true,
+            (HIRType::Inbuilt(I8), HIRType::Inbuilt(F64))
+            | (HIRType::Inbuilt(I16), HIRType::Inbuilt(F64))
+            | (HIRType::Inbuilt(I32), HIRType::Inbuilt(F64))
+            | (HIRType::Inbuilt(I64), HIRType::Inbuilt(F64))
+            | (HIRType::Inbuilt(U8), HIRType::Inbuilt(F64))
+            | (HIRType::Inbuilt(U16), HIRType::Inbuilt(F64))
+            | (HIRType::Inbuilt(U32), HIRType::Inbuilt(F64))
+            | (HIRType::Inbuilt(U64), HIRType::Inbuilt(F64)) => true,
 
             _ => false,
         }
@@ -824,7 +901,7 @@ impl HIRContext {
             _ => false,
         }) {
             if let HIRDeclaration::Func { ret_ty, .. } = main_func.clone() {
-                if ret_ty != Type::Inbuilt(InbuiltType::U0) {
+                if ret_ty != HIRType::Inbuilt(InbuiltType::U0) {
                     return;
                 }
 
@@ -832,7 +909,7 @@ impl HIRContext {
                     span: DUMMY_SPAN,
                     name: "__main_wrapper".into(),
                     params: vec![],
-                    ret_ty: Type::Inbuilt(InbuiltType::I32),
+                    ret_ty: HIRType::Inbuilt(InbuiltType::I32),
                     body: HIRStmt::Block {
                         span: DUMMY_SPAN,
                         stmts: vec![
@@ -842,16 +919,16 @@ impl HIRContext {
                                     span: DUMMY_SPAN,
                                     func: "main".into(),
                                     args: vec![],
-                                    ty: Type::Inbuilt(InbuiltType::U0),
+                                    ty: HIRType::Inbuilt(InbuiltType::U0),
                                 },
-                                ty: Type::Inbuilt(InbuiltType::U0),
+                                ty: HIRType::Inbuilt(InbuiltType::U0),
                             },
                             HIRStmt::Return {
                                 span: DUMMY_SPAN,
                                 expr: Some(HIRExpr::Constant {
                                     span: DUMMY_SPAN,
                                     value: Constant::Int(0),
-                                    ty: Type::Inbuilt(InbuiltType::I32),
+                                    ty: HIRType::Inbuilt(InbuiltType::I32),
                                 }),
                             },
                         ],
@@ -867,13 +944,13 @@ impl HIRContext {
 // this is so cool and big brain
 
 pub trait HIRExprGives {
-    fn ty(&self) -> Type;
-    fn ty_mut(&mut self) -> &mut Type;
+    fn ty(&self) -> HIRType;
+    fn ty_mut(&mut self) -> &mut HIRType;
     fn span(&self) -> Span;
 }
 
 impl HIRExprGives for HIRExpr {
-    fn ty(&self) -> Type {
+    fn ty(&self) -> HIRType {
         match self {
             HIRExpr::Ident { ty, .. }
             | HIRExpr::Constant { ty, .. }
@@ -881,6 +958,7 @@ impl HIRExprGives for HIRExpr {
             | HIRExpr::Binary { ty, .. }
             | HIRExpr::Unary { ty, .. }
             | HIRExpr::Call { ty, .. }
+            | HIRExpr::ArrElems { ty, .. }
             | HIRExpr::Member { ty, .. }
             | HIRExpr::Index { ty, .. }
             | HIRExpr::Conditional { ty, .. }
@@ -888,7 +966,7 @@ impl HIRExprGives for HIRExpr {
         }
     }
 
-    fn ty_mut(&mut self) -> &mut Type {
+    fn ty_mut(&mut self) -> &mut HIRType {
         match self {
             HIRExpr::Ident { ty, .. }
             | HIRExpr::Constant { ty, .. }
@@ -896,6 +974,7 @@ impl HIRExprGives for HIRExpr {
             | HIRExpr::Binary { ty, .. }
             | HIRExpr::Unary { ty, .. }
             | HIRExpr::Call { ty, .. }
+            | HIRExpr::ArrElems { ty, .. }
             | HIRExpr::Member { ty, .. }
             | HIRExpr::Index { ty, .. }
             | HIRExpr::Conditional { ty, .. }
@@ -911,6 +990,7 @@ impl HIRExprGives for HIRExpr {
             | HIRExpr::Binary { span, .. }
             | HIRExpr::Unary { span, .. }
             | HIRExpr::Call { span, .. }
+            | HIRExpr::ArrElems { span, .. }
             | HIRExpr::Member { span, .. }
             | HIRExpr::Index { span, .. }
             | HIRExpr::Conditional { span, .. }

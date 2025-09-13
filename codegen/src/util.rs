@@ -158,65 +158,66 @@ fn print_hir_expr(expr: &HIRExpr, level: usize) {
     match expr {
         HIRExpr::Ident { name, ty, .. } => println!("{}Ident: {} ({:?})", indent(level), name, ty),
         HIRExpr::Constant { value, ty, .. } => {
-            println!("{}Constant: {:?} ({:?})", indent(level), value, ty)
-        }
-        HIRExpr::Assign { lhs, rhs, ty, .. } => {
-            println!("{}Assign ({:?}):", indent(level), ty);
-            print_hir_expr(lhs, level + 1);
-            print_hir_expr(rhs, level + 1);
-        }
-        HIRExpr::Binary {
-            op, lhs, rhs, ty, ..
-        } => {
-            println!("{}Binary ({:?}): {:?}", indent(level), ty, op);
-            print_hir_expr(lhs, level + 1);
-            print_hir_expr(rhs, level + 1);
-        }
-        HIRExpr::Unary {
-            op, expr: e, ty, ..
-        } => {
-            println!("{}Unary ({:?}): {:?}", indent(level), ty, op);
-            print_hir_expr(e, level + 1);
-        }
-        HIRExpr::Call { func, args, ty, .. } => {
-            println!("{}Call ({:?}):", indent(level), ty);
-            println!("{}{}", func, indent(level));
-            for a in args {
-                print_hir_expr(a, level + 1);
+                println!("{}Constant: {:?} ({:?})", indent(level), value, ty)
             }
-        }
+        HIRExpr::Assign { lhs, rhs, ty, .. } => {
+                println!("{}Assign ({:?}):", indent(level), ty);
+                print_hir_expr(lhs, level + 1);
+                print_hir_expr(rhs, level + 1);
+            }
+        HIRExpr::Binary {
+                op, lhs, rhs, ty, ..
+            } => {
+                println!("{}Binary ({:?}): {:?}", indent(level), ty, op);
+                print_hir_expr(lhs, level + 1);
+                print_hir_expr(rhs, level + 1);
+            }
+        HIRExpr::Unary {
+                op, expr: e, ty, ..
+            } => {
+                println!("{}Unary ({:?}): {:?}", indent(level), ty, op);
+                print_hir_expr(e, level + 1);
+            }
+        HIRExpr::Call { func, args, ty, .. } => {
+                println!("{}Call ({:?}):", indent(level), ty);
+                println!("{}{}", func, indent(level));
+                for a in args {
+                    print_hir_expr(a, level + 1);
+                }
+            }
         HIRExpr::Member {
-            base, field, ty, ..
-        } => {
-            println!("{}Member ({:?}):", indent(level), ty);
-            print_hir_expr(base, level + 1);
-            print_hir_expr(field, level + 1);
-        }
+                base, field, ty, ..
+            } => {
+                println!("{}Member ({:?}):", indent(level), ty);
+                print_hir_expr(base, level + 1);
+                print_hir_expr(field, level + 1);
+            }
         HIRExpr::Index {
-            base, index, ty, ..
-        } => {
-            println!("{}Index ({:?}):", indent(level), ty);
-            print_hir_expr(base, level + 1);
-            print_hir_expr(index, level + 1);
-        }
+                base, index, ty, ..
+            } => {
+                println!("{}Index ({:?}):", indent(level), ty);
+                print_hir_expr(base, level + 1);
+                print_hir_expr(index, level + 1);
+            }
         HIRExpr::Conditional {
-            cond,
-            then_expr,
-            else_expr,
-            ty,
-            ..
-        } => {
-            println!("{}Conditional ({:?}):", indent(level), ty);
-            println!("{}Condition:", indent(level + 1));
-            print_hir_expr(cond, level + 2);
-            println!("{}Then:", indent(level + 1));
-            print_hir_expr(then_expr, level + 2);
-            println!("{}Else:", indent(level + 1));
-            print_hir_expr(else_expr, level + 2);
-        }
+                cond,
+                then_expr,
+                else_expr,
+                ty,
+                ..
+            } => {
+                println!("{}Conditional ({:?}):", indent(level), ty);
+                println!("{}Condition:", indent(level + 1));
+                print_hir_expr(cond, level + 2);
+                println!("{}Then:", indent(level + 1));
+                print_hir_expr(then_expr, level + 2);
+                println!("{}Else:", indent(level + 1));
+                print_hir_expr(else_expr, level + 2);
+            }
         HIRExpr::Cast { expr: e, ty, .. } => {
-            println!("{}Cast ({:?}):", indent(level), ty);
-            print_hir_expr(e, level + 1);
-        }
+                println!("{}Cast ({:?}):", indent(level), ty);
+                print_hir_expr(e, level + 1);
+            }
+        HIRExpr::ArrElems { span, elems, ty } => todo!(),
     }
 }

@@ -1,6 +1,6 @@
 use inkwell::targets::TargetMachine;
-use std::process::Command;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::codegen::Codegen;
 
@@ -25,16 +25,14 @@ impl<'ctx> Codegen<'ctx> {
             )
             .expect("Failed to create target machine");
 
-        // Write the object file
         let object_path = Path::new(filename);
         target_machine
             .write_to_file(&self.module, FileType::Object, object_path)
             .expect("Could not write object file");
 
-        // Generate binary in the same path
-        let binary_path = object_path.with_extension(""); // remove .o or any extension
+        let binary_path = object_path.with_extension("");
 
-        let status = Command::new("cc") // or "gcc" / "clang"
+        let status = Command::new("cc")
             .arg(object_path)
             .arg("-o")
             .arg(&binary_path)
@@ -51,4 +49,3 @@ impl<'ctx> Codegen<'ctx> {
         );
     }
 }
-
