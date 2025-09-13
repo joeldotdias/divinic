@@ -25,4 +25,5 @@ fn main() {
     codegen.dump_ir();
     // may be bad practice but patience kids
     codegen.emit_object_file("target/main.o");
+    println!("File emitted to target/main");
 }

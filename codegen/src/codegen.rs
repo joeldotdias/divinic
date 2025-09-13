@@ -12,7 +12,7 @@ use inkwell::{
 };
 use std::{collections::HashMap, ffi::CString};
 
-use crate::hir::{HIRDeclaration, HIRExpr, HIRExprGives, HIRModule, HIRStmt};
+use crate::hir::{HIRCase, HIRDeclaration, HIRExpr, HIRExprGives, HIRModule, HIRStmt};
 use ast::ast::{BinaryOp, Constant, Expr, InbuiltType, Type, UnaryOp};
 
 pub type CodegenContext = Context;
@@ -236,8 +236,12 @@ impl<'ctx> Codegen<'ctx> {
                 ..
             } => self.compile_if(cond_then_ladder, else_branch),
 
-            HIRStmt::Switch { .. } => todo!(),
-            HIRStmt::While { .. } => todo!(),
+            HIRStmt::Switch {
+               // expr, cases, nobounds,
+                ..
+            } => todo!(), // self.compile_switch(expr, cases, *nobounds),
+
+            HIRStmt::While { cond, body, .. } => self.compile_while(cond, body),
 
             HIRStmt::For {
                 init,
@@ -483,7 +487,12 @@ impl<'ctx> Codegen<'ctx> {
                     _ => Err("Unsupported unary operator".into()),
                 }
             }
-            HIRExpr::Assign { op, lhs, rhs, .. } => {
+            HIRExpr::Assign {
+                op: _op, /* todo */
+                lhs,
+                rhs,
+                ..
+            } => {
                 if let HIRExpr::Ident { name, .. } = lhs.as_ref() {
                     let rhs_val = self.compile_expr(rhs)?;
                     if let Some(var) = self.lookup_var(name) {
@@ -687,6 +696,108 @@ impl<'ctx> Codegen<'ctx> {
 
         Ok(())
     }
+
+    #[allow(dead_code)]
+    fn compile_switch(
+        &mut self,
+        expr: &HIRExpr,
+        cases: &[HIRCase],
+        nobounds: bool,
+    ) -> Result<(), EcoString> {
+        let cond_val = self.compile_expr(expr)?.into_int_value();
+        let parent_fn = self.current_function.unwrap();
+
+        let mut case_blocks = Vec::new();
+        let mut default_bb = None;
+
+        for (i, case) in cases.iter().enumerate() {
+            let bb = self
+                .context
+                .append_basic_block(parent_fn, &format!("case{}", i));
+            if case.values.is_none() {
+                default_bb = Some(bb);
+            }
+            case_blocks.push((case, bb));
+        }
+
+        let merge_bb = self.context.append_basic_block(parent_fn, "switch_merge");
+
+        let mut llvm_cases = Vec::new();
+        for (case, bb) in &case_blocks {
+            if let Some(values) = &case.values {
+                for v in values {
+                    let val = self.compile_constant(v)?;
+                    llvm_cases.push((val.into_int_value(), *bb));
+                }
+            }
+        }
+
+        let _ = self
+            .builder
+            .build_switch(cond_val, default_bb.unwrap_or(merge_bb), &llvm_cases);
+
+        for (i, (case, bb)) in case_blocks.iter().enumerate() {
+            self.builder.position_at_end(*bb);
+            self.compile_stmt(&case.body)?;
+            if self
+                .builder
+                .get_insert_block()
+                .unwrap()
+                .get_terminator()
+                .is_none()
+            {
+                if nobounds {
+                    if let Some((_, next_bb)) = case_blocks.get(i + 1) {
+                        let _ = self.builder.build_unconditional_branch(*next_bb);
+                    } else {
+                        let _ = self.builder.build_unconditional_branch(merge_bb);
+                    }
+                } else {
+                    let _ = self.builder.build_unconditional_branch(merge_bb);
+                }
+            }
+        }
+
+        self.builder.position_at_end(merge_bb);
+        Ok(())
+    }
+
+    fn compile_while(&mut self, cond: &HIRExpr, body: &HIRStmt) -> Result<(), EcoString> {
+        let parent_fn = self
+            .current_function
+            .ok_or_else(|| "This `while` is outside any function")?;
+
+        self.push_scope();
+
+        let cond_bb = self.context.append_basic_block(parent_fn, "while_cond");
+        let body_bb = self.context.append_basic_block(parent_fn, "while_body");
+        let after_bb = self.context.append_basic_block(parent_fn, "while_end");
+
+        let _ = self.builder.build_unconditional_branch(cond_bb);
+
+        self.builder.position_at_end(cond_bb);
+        let cond_val = self.compile_condition(cond)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(cond_val, body_bb, after_bb);
+
+        self.builder.position_at_end(body_bb);
+        self.compile_stmt(body)?;
+        if self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_terminator())
+            .is_none()
+        {
+            let _ = self.builder.build_unconditional_branch(cond_bb);
+        }
+
+        self.builder.position_at_end(after_bb);
+        self.pop_scope();
+
+        Ok(())
+    }
+
     fn compile_constant(&mut self, constant: &Constant) -> Result<BasicValueEnum<'ctx>, EcoString> {
         let val: BasicValueEnum<'ctx> = match constant {
             Constant::Int(v) => self.context.i64_type().const_int(*v as u64, true).into(),

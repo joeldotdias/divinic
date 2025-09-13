@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use InbuiltType::*; // don't mind me for a minute here
 use ast::ast::{
     BinaryOp, Case, Constant, Declaration, Enumerator, Expr, InbuiltType, Label, Module, Param,
     Stmt, Type, UnaryOp,
@@ -667,9 +668,8 @@ impl HIRContext {
                 Self::infer_expr(else_expr, locals, globals);
                 *ty = Self::unify_types(then_expr.ty(), else_expr.ty());
             }
-            HIRExpr::Cast { expr: e, ty: t, .. } => {
+            HIRExpr::Cast { expr: e, .. } => {
                 Self::infer_expr(e, locals, globals);
-                *t = t.clone();
             }
             HIRExpr::Paren { expr: e, ty, .. } => {
                 Self::infer_expr(e, locals, globals);
@@ -697,18 +697,46 @@ impl HIRContext {
         }
     }
 
+    // sybau
     fn is_type_compatible(expr_ty: &Type, ret_ty: &Type) -> bool {
-        use InbuiltType::*;
         match (expr_ty, ret_ty) {
             (a, b) if a == b => true,
-            (Type::Inbuilt(I8), Type::Inbuilt(I16 | I32 | I64)) => true,
-            (Type::Inbuilt(U8), Type::Inbuilt(I16 | I32 | I64 | U16 | U32 | U64)) => true,
-            (Type::Inbuilt(I16), Type::Inbuilt(I32 | I64)) => true,
-            (Type::Inbuilt(U16), Type::Inbuilt(I32 | I64 | U32 | U64)) => true,
+
+            (Type::Inbuilt(I8), Type::Inbuilt(I16))
+            | (Type::Inbuilt(I8), Type::Inbuilt(I32))
+            | (Type::Inbuilt(I8), Type::Inbuilt(I64)) => true,
+
+            (Type::Inbuilt(U8), Type::Inbuilt(I16))
+            | (Type::Inbuilt(U8), Type::Inbuilt(I32))
+            | (Type::Inbuilt(U8), Type::Inbuilt(I64))
+            | (Type::Inbuilt(U8), Type::Inbuilt(U16))
+            | (Type::Inbuilt(U8), Type::Inbuilt(U32))
+            | (Type::Inbuilt(U8), Type::Inbuilt(U64)) => true,
+
+            (Type::Inbuilt(I16), Type::Inbuilt(I32)) | (Type::Inbuilt(I16), Type::Inbuilt(I64)) => {
+                true
+            }
+
+            (Type::Inbuilt(U16), Type::Inbuilt(I32))
+            | (Type::Inbuilt(U16), Type::Inbuilt(I64))
+            | (Type::Inbuilt(U16), Type::Inbuilt(U32))
+            | (Type::Inbuilt(U16), Type::Inbuilt(U64)) => true,
+
             (Type::Inbuilt(I32), Type::Inbuilt(I64)) => true,
-            (Type::Inbuilt(U32), Type::Inbuilt(I64 | U64)) => true,
-            (Type::Inbuilt(I8 | I16 | I32 | I64), Type::Inbuilt(F64)) => true,
-            (Type::Inbuilt(U8 | U16 | U32 | U64), Type::Inbuilt(F64)) => true,
+
+            (Type::Inbuilt(U32), Type::Inbuilt(I64)) | (Type::Inbuilt(U32), Type::Inbuilt(U64)) => {
+                true
+            }
+
+            (Type::Inbuilt(I8), Type::Inbuilt(F64))
+            | (Type::Inbuilt(I16), Type::Inbuilt(F64))
+            | (Type::Inbuilt(I32), Type::Inbuilt(F64))
+            | (Type::Inbuilt(I64), Type::Inbuilt(F64))
+            | (Type::Inbuilt(U8), Type::Inbuilt(F64))
+            | (Type::Inbuilt(U16), Type::Inbuilt(F64))
+            | (Type::Inbuilt(U32), Type::Inbuilt(F64))
+            | (Type::Inbuilt(U64), Type::Inbuilt(F64)) => true,
+
             _ => false,
         }
     }
