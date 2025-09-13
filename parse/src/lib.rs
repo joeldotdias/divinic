@@ -1,6 +1,19 @@
+use std::collections::HashMap;
+
+use ast::ast::{Label, Module, Type};
+use ecow::EcoString;
+
 pub mod lexer;
 pub mod parser;
 pub mod session;
+pub mod symtab;
+
+#[derive(Clone, Debug)]
+pub struct AnnotatedModule {
+    pub name: EcoString,
+    pub ast: Module,
+    pub resolved_symbols: HashMap<Label, Type>,
+}
 
 #[cfg(test)]
 mod tests {
@@ -13,7 +26,10 @@ mod tests {
     #[test]
     fn it_works() {
         // let src = include_str!("../../testdata/small.HC");
-        let src = include_str!("../../testdata/shreerang.HC");
+        // let src = include_str!("../../testdata/shreerang.HC");
+        // let src = include_str!("../../testdata/switcheroo.HC");
+        // let src = include_str!("../../testdata/klass.HC");
+        let src = include_str!("../../testdata/arrs.HC");
         let psess = ParseSess::default();
         let stream = lex_token_trees(&psess, src).expect("shouldn't have been an error here");
         // let mut cursor = TokenCursor::new(stream);
@@ -38,7 +54,8 @@ mod tests {
         // };
 
         let mut parser = Parser::new(&psess, stream);
-        parser.parse_module().unwrap();
+        let hmod = parser.parse_module().unwrap();
+        println!("{:#?}", hmod);
         assert_eq!(1, 1);
     }
 }

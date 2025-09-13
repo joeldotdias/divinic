@@ -89,6 +89,9 @@ pub enum TokenKind {
     Elif,
     For,
     While,
+    Switch,
+    Case,
+    Default,
     Break,
     Continue,
     Return,
@@ -257,6 +260,13 @@ impl Token {
         matches!(self.kind, TokenKind::RCurly | TokenKind::Eof)
     }
 
+    pub fn is_case_ender(&self) -> bool {
+        matches!(
+            self.kind,
+            TokenKind::Case | TokenKind::Default | TokenKind::RCurly
+        )
+    }
+
     pub fn to_str(&self) -> &'_ str {
         self.kind.to_str()
     }
@@ -369,6 +379,9 @@ impl TokenKind {
             TokenKind::Elif => "elif",
             TokenKind::For => "for",
             TokenKind::While => "while",
+            TokenKind::Switch => "switch",
+            TokenKind::Case => "case",
+            TokenKind::Default => "default",
             TokenKind::Break => "break",
             TokenKind::Continue => "continue",
             TokenKind::Return => "return",
@@ -436,7 +449,6 @@ pub fn is_reserved_keyword(s: &str) -> bool {
             | "continue"
             | "class"
             | "union"
-            | "struct"
             | "enum"
             | "U0"
             | "U8"

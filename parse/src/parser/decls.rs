@@ -1,21 +1,24 @@
-use ast::{
-    ast::{Declaration, Param, Stmt},
-    span::DUMMY_SPAN,
-};
+use ast::ast::{Declaration, Label, Param, Type};
 
 use crate::{
-    lexer::token::TokenKind,
-    parser::{Parser, error::ParseErr},
+    lexer::token::{LitInner, LitKind, TokenKind},
+    parser::{ParseResult, Parser, error::ParseErr},
 };
 
 impl<'a> Parser<'a> {
     // parse a function, class, var declaration or an include
     pub fn parse_top_level(&mut self) -> Result<Option<Declaration>, ParseErr> {
-        // println!("{:?} | {:?}", self.prev_tok, self.curr_tok);
         let decl = if self.is_func_def() {
             self.parse_func()?
         } else {
-            return Ok(None);
+            match &self.curr_tok.kind {
+                TokenKind::Pound if self.look_ahead(1, |t| matches!(t, &TokenKind::Include)) => {
+                    self.parse_include()?
+                }
+                TokenKind::Class => self.parse_class()?,
+                _ => return Ok(None),
+            }
+            // return Ok(None);
         };
 
         Ok(Some(decl))
@@ -26,7 +29,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_func(&mut self) -> Result<Declaration, ParseErr> {
-        println!("Started parsing func");
         let start = self.curr_tok.span;
         let ret_ty = self.parse_ty()?; // TODO handle bad case here
         let fn_name = self.parse_ident()?;
@@ -47,10 +49,6 @@ impl<'a> Parser<'a> {
 
         let body = self.parse_block()?;
 
-        // while !self.eat_no_expect(&TokenKind::RCurly) {
-        //     self.bump();
-        // }
-
         let fn_decl = Declaration::Func {
             span: start.merge(self.prev_tok.span),
             name: fn_name,
@@ -58,7 +56,6 @@ impl<'a> Parser<'a> {
             params,
             body,
         };
-        println!("Parsed func:\n{:#?}", fn_decl);
 
         Ok(fn_decl)
     }
@@ -77,5 +74,65 @@ impl<'a> Parser<'a> {
             name,
             ty,
         }))
+    }
+
+    fn parse_class(&mut self) -> ParseResult<Declaration> {
+        let start = self.curr_tok.span;
+        if !self.eat_no_expect(&TokenKind::Class) {
+            // err
+        }
+
+        let name = self.parse_ident()?;
+
+        if !self.eat_no_expect(&TokenKind::LCurly) {
+            // err
+        }
+
+        let fields = Parser::series_of(self, &Parser::parse_kfield, Some(&TokenKind::Semi))?;
+
+        if !self.eat_no_expect(&TokenKind::RCurly) {
+            // err
+        }
+
+        Ok(Declaration::Class {
+            span: start.merge(self.prev_tok.span),
+            name,
+            fields,
+        })
+    }
+
+    fn parse_kfield(&mut self) -> Result<Option<(Type, Label)>, ParseErr> {
+        if self.check_no_expect(&TokenKind::RCurly) {
+            return Ok(None);
+        }
+
+        let ty = self.parse_ty()?;
+        let name = self.parse_ident()?;
+
+        Ok(Some((ty, name)))
+    }
+
+    fn parse_include(&mut self) -> ParseResult<Declaration> {
+        if !self.eat_no_expect(&TokenKind::Pound) {
+            // err
+        }
+        if !self.eat_no_expect(&TokenKind::Include) {
+            // err
+        }
+
+        let label = if let TokenKind::Literal(LitInner { symbol, .. }) = &self.curr_tok.kind {
+            symbol.clone()
+        } else {
+            todo!() // err here
+        };
+
+        let fp = label.strip_prefix('"').unwrap().strip_suffix('"').unwrap();
+
+        self.bump();
+
+        Ok(Declaration::Include {
+            name: fp.into(),
+            as_name: None,
+        })
     }
 }

@@ -76,6 +76,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_ty(&mut self) -> Result<Type, ParseErr> {
         use TokenKind::*;
+        println!("Got token for ty => {:?}", self.curr_tok);
         let ty = match &self.curr_tok.kind {
             Ident(label) => Type::Named(label.clone()),
             U0 => Type::Inbuilt(InbuiltType::U0),
@@ -92,6 +93,8 @@ impl<'a> Parser<'a> {
             _ => todo!(),
         };
         self.bump();
+
+        println!("Type: {:?}", ty);
 
         Ok(ty)
     }

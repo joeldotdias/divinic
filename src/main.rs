@@ -10,11 +10,15 @@ fn main() {
     let files = if env::args().len() > 1 {
         env::args().skip(1).collect::<Vec<String>>()
     } else {
-        vec!["testdata/shreerang.HC".to_string()]
+        vec![
+            "testdata/mathing.HC".to_string(),
+            "testdata/small.HC".to_string(),
+        ]
     };
     let mut sesh = ParseSess::new(files);
     dbg!(&sesh);
     sesh.mk_asteez();
+    let _ = sesh.build_symbol_tables();
 
     let context = CodegenContext::create();
     let mut codegen =
