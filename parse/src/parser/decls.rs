@@ -2,18 +2,19 @@ use ast::ast::{Declaration, Label, Param, Type};
 
 use crate::{
     lexer::token::{LitInner, LitKind, TokenKind},
-    parser::{ParseResult, Parser, error::ParseErr},
+    parser::{ParseResult, ParsedItem, Parser, error::ParseErr},
 };
 
 impl<'a> Parser<'a> {
     // parse a function, class, var declaration or an include
-    pub fn parse_top_level(&mut self) -> Result<Option<Declaration>, ParseErr> {
+    // pub fn parse_top_level(&mut self) -> Result<Option<Declaration>, ParseErr> {
+    pub fn parse_top_level(&mut self) -> Result<Option<ParsedItem>, ParseErr> {
         let decl = if self.is_func_def() {
             self.parse_func()?
         } else {
             match &self.curr_tok.kind {
                 TokenKind::Pound if self.look_ahead(1, |t| matches!(t, &TokenKind::Include)) => {
-                    self.parse_include()?
+                    return Ok(Some(ParsedItem::Dependency(self.parse_include()?)));
                 }
                 TokenKind::Class => self.parse_class()?,
                 _ => return Ok(None),
@@ -21,7 +22,7 @@ impl<'a> Parser<'a> {
             // return Ok(None);
         };
 
-        Ok(Some(decl))
+        Ok(Some(ParsedItem::Decl(decl)))
     }
 
     fn is_func_def(&self) -> bool {
@@ -112,7 +113,7 @@ impl<'a> Parser<'a> {
         Ok(Some((ty, name)))
     }
 
-    fn parse_include(&mut self) -> ParseResult<Declaration> {
+    fn parse_include(&mut self) -> ParseResult<Label> {
         if !self.eat_no_expect(&TokenKind::Pound) {
             // err
         }
@@ -130,9 +131,34 @@ impl<'a> Parser<'a> {
 
         self.bump();
 
-        Ok(Declaration::Include {
-            name: fp.into(),
-            as_name: None,
-        })
+        // Ok(Declaration::Include {
+        //     name: fp.into(),
+        //     as_name: None,
+        // })
+        Ok(fp.into())
     }
+
+    // fn parse_include(&mut self) -> ParseResult<Declaration> {
+    //     if !self.eat_no_expect(&TokenKind::Pound) {
+    //         // err
+    //     }
+    //     if !self.eat_no_expect(&TokenKind::Include) {
+    //         // err
+    //     }
+    //
+    //     let label = if let TokenKind::Literal(LitInner { symbol, .. }) = &self.curr_tok.kind {
+    //         symbol.clone()
+    //     } else {
+    //         todo!() // err here
+    //     };
+    //
+    //     let fp = label.strip_prefix('"').unwrap().strip_suffix('"').unwrap();
+    //
+    //     self.bump();
+    //
+    //     Ok(Declaration::Include {
+    //         name: fp.into(),
+    //         as_name: None,
+    //     })
+    // }
 }

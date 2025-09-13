@@ -7,6 +7,7 @@ pub type Label = EcoString;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
     pub decls: Vec<Declaration>,
+    pub deps: Vec<Label>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

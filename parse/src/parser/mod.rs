@@ -1,6 +1,6 @@
 use std::{fs, mem};
 
-use ast::ast::{InbuiltType, Module, Type};
+use ast::ast::{Declaration, InbuiltType, Label, Module, Type};
 use ecow::EcoString;
 
 use crate::{
@@ -25,6 +25,11 @@ pub struct Parser<'a> {
     prev_tok: Token,
     cursor: TokenCursor,
     pub errs: Vec<ParseErr>,
+}
+
+pub enum ParsedItem {
+    Decl(Declaration),
+    Dependency(EcoString),
 }
 
 // this section is just meant to be for the parser building blocks
@@ -67,11 +72,19 @@ impl<'a> Parser<'a> {
         // let decl = self.parse_top_level()?;
         // decls.push(decl);
 
-        let decls = Parser::series_of(self, &Parser::parse_top_level, None)?;
+        let tlvls = Parser::series_of(self, &Parser::parse_top_level, None)?;
+        let mut decls = Vec::new();
+        let mut deps = Vec::new();
+        for thing in tlvls {
+            match thing {
+                ParsedItem::Decl(decl) => decls.push(decl),
+                ParsedItem::Dependency(dep) => deps.push(dep),
+            }
+        }
         // let dbg_str = format!("{:#?}", decls);
         // fs::write("ast_dump.txt", dbg_str).unwrap();
 
-        Ok(Module { decls })
+        Ok(Module { decls, deps })
     }
 
     pub fn parse_ty(&mut self) -> Result<Type, ParseErr> {

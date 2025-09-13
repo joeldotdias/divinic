@@ -24,38 +24,52 @@ mod tests {
     };
 
     #[test]
-    fn it_works() {
-        // let src = include_str!("../../testdata/small.HC");
-        // let src = include_str!("../../testdata/shreerang.HC");
-        // let src = include_str!("../../testdata/switcheroo.HC");
-        // let src = include_str!("../../testdata/klass.HC");
-        let src = include_str!("../../testdata/arrs.HC");
-        let psess = ParseSess::default();
-        let stream = lex_token_trees(&psess, src).expect("shouldn't have been an error here");
-        // let mut cursor = TokenCursor::new(stream);
-        //
-        // loop {
-        //     let token = cursor.next();
-        //     if matches!(token.kind, TokenKind::Eof) {
-        //         break;
-        //     }
-        //     println!("{:?}", token);
-        // }
+    fn will_it() {
+        let files = vec![
+            "testdata/small.HC".to_string(),
+            "testdata/mathing.HC".to_string(),
+        ];
 
-        // let stream = match lex_token_trees(&self, &f.src) {
-        //     Ok(ts) => ts,
-        //     Err(errs) => {
-        //         for e in errs {
-        //             let (filename, source) = self.src_file(e.loc.fid as usize);
-        //             e.report(filename.to_str().unwrap(), source);
-        //         }
-        //         return;
-        //     }
-        // };
+        let mut sesh = ParseSess::new(files);
+        sesh.mk_asteez();
+        let _ = sesh.build_symbol_tables();
 
-        let mut parser = Parser::new(&psess, stream);
-        let hmod = parser.parse_module().unwrap();
-        println!("{:#?}", hmod);
-        assert_eq!(1, 1);
+        assert_eq!(1, 1)
     }
+
+    // #[test]
+    // fn it_works() {
+    //     let src = include_str!("../../testdata/small.HC");
+    //     // let src = include_str!("../../testdata/shreerang.HC");
+    //     // let src = include_str!("../../testdata/switcheroo.HC");
+    //     // let src = include_str!("../../testdata/klass.HC");
+    //     // let src = include_str!("../../testdata/arrs.HC");
+    //     let psess = ParseSess::default();
+    //     let stream = lex_token_trees(&psess, src).expect("shouldn't have been an error here");
+    //     // let mut cursor = TokenCursor::new(stream);
+    //     //
+    //     // loop {
+    //     //     let token = cursor.next();
+    //     //     if matches!(token.kind, TokenKind::Eof) {
+    //     //         break;
+    //     //     }
+    //     //     println!("{:?}", token);
+    //     // }
+    //
+    //     // let stream = match lex_token_trees(&self, &f.src) {
+    //     //     Ok(ts) => ts,
+    //     //     Err(errs) => {
+    //     //         for e in errs {
+    //     //             let (filename, source) = self.src_file(e.loc.fid as usize);
+    //     //             e.report(filename.to_str().unwrap(), source);
+    //     //         }
+    //     //         return;
+    //     //     }
+    //     // };
+    //
+    //     let mut parser = Parser::new(&psess, stream);
+    //     let hmod = parser.parse_module().unwrap();
+    //     println!("{:#?}", hmod);
+    //     assert_eq!(1, 1);
+    // }
 }
