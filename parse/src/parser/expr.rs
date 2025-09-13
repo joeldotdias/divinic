@@ -101,16 +101,34 @@ impl<'a> Parser<'a> {
                     expr = self.parse_func_call(expr)?;
                 }
                 TokenKind::LBracket => {
-                    // index expr
-                    todo!()
+                    self.bump();
+                    let index = self.parse_expr()?;
+                    if !self.eat_no_expect(&TokenKind::RBracket) {}
+                    expr = Expr::Index {
+                        span: start.merge(self.prev_tok.span),
+                        base: Box::new(expr),
+                        index: Box::new(index),
+                    }
                 }
                 TokenKind::Dot => {
-                    // field expr
-                    todo!()
+                    self.bump();
+                    let field = self.parse_expr()?;
+                    expr = Expr::Member {
+                        span: start.merge(self.prev_tok.span),
+                        base: Box::new(expr),
+                        field: Box::new(field),
+                        arrow: false,
+                    }
                 }
                 TokenKind::Arrow => {
-                    // pointer field expr
-                    todo!()
+                    self.bump();
+                    let field = self.parse_expr()?;
+                    expr = Expr::Member {
+                        span: start.merge(self.prev_tok.span),
+                        base: Box::new(expr),
+                        field: Box::new(field),
+                        arrow: true,
+                    }
                 }
                 TokenKind::PlusPlus => {
                     self.bump();
@@ -145,6 +163,22 @@ impl<'a> Parser<'a> {
                     // handle
                 }
                 Ok(inner)
+            }
+            TokenKind::LCurly => {
+                self.bump();
+                let elems = Parser::series_of(
+                    self,
+                    &|parser: &mut Parser| parser.parse_expr().map(Some),
+                    Some(&TokenKind::Comma),
+                )?;
+                if !self.eat_no_expect(&TokenKind::RCurly) {
+                    //err
+                }
+
+                Ok(Expr::ArrElems {
+                    span: start.merge(self.prev_tok.span),
+                    elems,
+                })
             }
             TokenKind::Ident(_) => {
                 let name = self.parse_ident()?;

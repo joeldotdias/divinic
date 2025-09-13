@@ -1,4 +1,4 @@
-use ast::ast::{Constant, Expr, Stmt};
+use ast::ast::{Constant, Expr, Stmt, Type};
 
 use crate::{
     lexer::token::{LitKind, TokenKind},
@@ -28,8 +28,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseErr> {
-        // println!("\n\nGoing to parse new statement: {:?}", self.curr_tok);
-        // println!("Next: {:?}", self.peek_token());
+        println!("\n\nGoing to parse new statement: {:?}", self.curr_tok);
+        println!("Next: {:?}", self.peek_token());
 
         match &self.curr_tok.kind {
             TokenKind::Return => self.parse_return(),
@@ -67,8 +67,17 @@ impl<'a> Parser<'a> {
 
     fn parse_var_decl(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
-        let ty = self.parse_ty()?;
+        let mut ty = self.parse_ty()?;
         let name = self.parse_ident_no_recover()?;
+
+        if self.eat_no_expect(&TokenKind::LBracket) {
+            let count = self.parse_expr()?;
+            ty = Type::Array(Box::new(ty), Some(count));
+
+            if !self.eat_no_expect(&TokenKind::RBracket) {
+                //err
+            }
+        }
 
         let expr = match self.curr_tok.kind {
             TokenKind::Eq => {

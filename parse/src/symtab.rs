@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use ast::ast::Type;
-use ecow::EcoString;
-
-type Label = EcoString;
+use ast::ast::{Label, Type};
 
 #[derive(Debug, Clone)]
 pub struct SymbolTable {

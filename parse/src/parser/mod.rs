@@ -94,6 +94,8 @@ impl<'a> Parser<'a> {
         };
         self.bump();
 
+        println!("Type: {:?}", ty);
+
         Ok(ty)
     }
 

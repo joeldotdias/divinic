@@ -2,7 +2,6 @@ use ecow::EcoString;
 
 use crate::span::Span;
 
-pub type NodeId = u32;
 pub type Label = EcoString;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -176,10 +175,14 @@ pub enum Expr {
         func: Label,
         args: Vec<Expr>,
     },
+    ArrElems {
+        span: Span,
+        elems: Vec<Expr>,
+    },
     Member {
         span: Span,
         base: Box<Expr>,
-        field: Label,
+        field: Box<Expr>,
         arrow: bool,
     },
     Index {
@@ -419,11 +422,11 @@ impl Expr {
     pub fn call(span: Span, func: Label, args: Vec<Expr>) -> Self {
         Self::Call { span, func, args }
     }
-    pub fn member(span: Span, base: Expr, field: EcoString, arrow: bool) -> Self {
+    pub fn member(span: Span, base: Expr, field: Expr, arrow: bool) -> Self {
         Self::Member {
             span,
             base: Box::new(base),
-            field,
+            field: Box::new(field),
             arrow,
         }
     }

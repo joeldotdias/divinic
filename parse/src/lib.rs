@@ -27,7 +27,9 @@ mod tests {
     fn it_works() {
         // let src = include_str!("../../testdata/small.HC");
         // let src = include_str!("../../testdata/shreerang.HC");
-        let src = include_str!("../../testdata/switcheroo.HC");
+        // let src = include_str!("../../testdata/switcheroo.HC");
+        // let src = include_str!("../../testdata/klass.HC");
+        let src = include_str!("../../testdata/arrs.HC");
         let psess = ParseSess::default();
         let stream = lex_token_trees(&psess, src).expect("shouldn't have been an error here");
         // let mut cursor = TokenCursor::new(stream);
