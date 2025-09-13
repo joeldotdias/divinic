@@ -1,6 +1,7 @@
 use ecow::EcoString;
 use inkwell::FloatPredicate::{OEQ, OGE, OGT, OLE, OLT, ONE};
 use inkwell::IntPredicate::{EQ, NE, SGE, SGT, SLE, SLT, UGE, UGT, ULE, ULT};
+use inkwell::values::BasicMetadataValueEnum;
 use inkwell::{
     AddressSpace, IntPredicate,
     builder::{Builder, BuilderError},
@@ -8,7 +9,7 @@ use inkwell::{
     execution_engine::ExecutionEngine,
     module::Module as InkModule,
     types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType},
-    values::{BasicValueEnum, FunctionValue, IntValue, PointerValue},
+    values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
 use std::{collections::HashMap, ffi::CString};
 
@@ -152,7 +153,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(())
             }
 
-            HIRDeclaration::Struct { .. } => todo!(),
+            HIRDeclaration::Class { .. } => todo!(),
             HIRDeclaration::Enum { .. } => todo!(),
             HIRDeclaration::Include { .. } => Ok(()),
         }
@@ -507,30 +508,63 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             HIRExpr::Call { func, args, .. } => {
-                let fn_val = *self
+                let func_val = *self
                     .functions
                     .get(func.as_str())
-                    .ok_or_else(|| format!("Unknown function {}", func))?;
+                    .ok_or_else(|| format!("Function {} not found", func))?;
 
-                let compiled_args: Vec<_> = args
-                    .iter()
-                    .map(|arg| self.compile_expr(arg).map(|v| v.into()))
-                    .collect::<Result<_, _>>()?;
+                let fn_type = func_val.get_type();
+                let param_types = fn_type.get_param_types();
 
-                let call = self
+                let mut compiled_args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(args.len());
+
+                // since varargs are not yet standard
+                if func == "Print" {
+                    if args.is_empty() {
+                        return Err("printf requires at least a format string".into());
+                    }
+
+                    let first_val = self.compile_expr(&args[0])?;
+                    let first_ty = basic_metadata_to_basic_type(param_types[0]);
+                    let target_ty = self.from_llvm_basic_type(first_ty)?;
+                    let casted_first = self.cast_to_type(first_val, &target_ty)?;
+                    compiled_args.push(casted_first.as_basic_value_enum().into());
+
+                    for arg in &args[1..] {
+                        let val = self.compile_expr(arg)?;
+                        compiled_args.push(val.as_basic_value_enum().into());
+                    }
+                } else {
+                    if args.len() != param_types.len() {
+                        return Err(format!(
+                            "Function {} expects {} args, got {}",
+                            func,
+                            param_types.len(),
+                            args.len()
+                        )
+                        .into());
+                    }
+
+                    for (i, arg) in args.iter().enumerate() {
+                        let val = self.compile_expr(arg)?;
+                        let basic_ty = basic_metadata_to_basic_type(param_types[i]);
+                        let target_ty = self.from_llvm_basic_type(basic_ty)?;
+                        let casted_val = self.cast_to_type(val, &target_ty)?;
+                        compiled_args.push(casted_val.as_basic_value_enum().into());
+                    }
+                }
+
+                let call_site = self
                     .builder
-                    .build_call(fn_val, &compiled_args, "calltmp")
+                    .build_call(func_val, &compiled_args, "calltmp")
                     .unwrap();
-                Ok(call
-                    .try_as_basic_value()
-                    .left()
-                    .unwrap_or_else(|| self.context.i32_type().const_zero().into()))
+                let call_val = call_site.try_as_basic_value().left().unwrap();
+                Ok(call_val)
             }
-            HIRExpr::Member { .. } => todo!(),
             HIRExpr::Index { .. } => todo!(),
             HIRExpr::Conditional { .. } => todo!(),
             HIRExpr::Cast { .. } => todo!(),
-            HIRExpr::Paren { .. } => todo!(),
+            HIRExpr::Member { .. } => todo!(),
         }
     }
 
@@ -1032,5 +1066,18 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
         None
+    }
+}
+
+// great
+fn basic_metadata_to_basic_type<'ctx>(ty: BasicMetadataTypeEnum<'ctx>) -> BasicTypeEnum<'ctx> {
+    match ty {
+        BasicMetadataTypeEnum::IntType(int_ty) => int_ty.as_basic_type_enum(),
+        BasicMetadataTypeEnum::FloatType(float_ty) => float_ty.as_basic_type_enum(),
+        BasicMetadataTypeEnum::PointerType(ptr_ty) => ptr_ty.as_basic_type_enum(),
+        BasicMetadataTypeEnum::StructType(struct_ty) => struct_ty.as_basic_type_enum(),
+        BasicMetadataTypeEnum::ArrayType(array_ty) => array_ty.as_basic_type_enum(),
+        BasicMetadataTypeEnum::VectorType(vec_ty) => vec_ty.as_basic_type_enum(),
+        _ => todo!(),
     }
 }

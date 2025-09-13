@@ -1,12 +1,7 @@
 #include "testdata/mathing.HC"
 
-class Point {
-    I32 x;
-    I32 y;
-}
-
-U0 Main() {
-    I64 num = thinger(3, 5);
-
-    "num = %d", num;
+U0 main() {
+  "Hello\n";
+  I32 thing = thinger(12, 13);
+  "%i\n", thing;
 }

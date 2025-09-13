@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use InbuiltType::*; // don't mind me for a minute here
 use ast::ast::{
-    BinaryOp, Case, Constant, Declaration, Enumerator, Expr, InbuiltType, Label, Module, Param,
-    Stmt, Type, UnaryOp,
+    BinaryOp, Constant, Declaration, Enumerator, Expr, InbuiltType, Label, Module, Param, Stmt,
+    Type, UnaryOp,
 };
 use ast::span::{DUMMY_SPAN, Span};
 
@@ -29,10 +29,10 @@ pub enum HIRDeclaration {
         params: Vec<HIRParam>,
         body: HIRStmt,
     },
-    Struct {
+    Class {
         span: Span,
-        name: Option<Label>,
-        fields: Vec<HIRDeclaration>,
+        name: Label,
+        fields: Vec<(Type, Label)>,
     },
     Enum {
         span: Span,
@@ -100,7 +100,7 @@ pub enum HIRExpr {
     Member {
         span: Span,
         base: Box<HIRExpr>,
-        field: Label,
+        field: Box<HIRExpr>,
         arrow: bool,
         ty: Type,
     },
@@ -121,11 +121,6 @@ pub enum HIRExpr {
         span: Span,
         ty: Type,
         expr: Box<HIRExpr>,
-    },
-    Paren {
-        span: Span,
-        expr: Box<HIRExpr>,
-        ty: Type,
     },
 }
 
@@ -153,8 +148,9 @@ pub enum HIRStmt {
     },
     Switch {
         span: Span,
-        expr: HIRExpr,
-        cases: Vec<HIRCase>,
+        subject: HIRExpr,
+        cases: Vec<(Constant, Vec<HIRStmt>)>,
+        default: Option<Vec<HIRStmt>>,
         nobounds: bool,
     },
     While {
@@ -192,6 +188,7 @@ type SymTable = HashMap<EcoString, SymEntry>;
 #[derive(Clone, Debug)]
 struct SymEntry {
     ty: Type,
+    params: Option<Vec<Type>>,
 }
 
 pub struct HIRContext;
@@ -245,11 +242,9 @@ impl HIRContext {
                 params: params.into_iter().map(Self::ast_param_to_hir).collect(),
                 body: Self::ast_stmt_to_hir(body),
             },
-            Declaration::Struct { span, name, fields } => HIRDeclaration::Struct {
-                span,
-                name,
-                fields: fields.into_iter().map(Self::ast_decl_to_hir).collect(),
-            },
+            Declaration::Class { span, name, fields } => {
+                HIRDeclaration::Class { span, name, fields }
+            }
             Declaration::Enum {
                 span,
                 name,
@@ -315,13 +310,19 @@ impl HIRContext {
             },
             Stmt::Switch {
                 span,
-                expr,
+                subject,
                 cases,
+                default,
                 nobounds,
             } => HIRStmt::Switch {
                 span,
-                expr: Self::ast_expr_to_hir(expr),
-                cases: cases.into_iter().map(Self::ast_case_to_hir).collect(),
+                subject: Self::ast_expr_to_hir(subject),
+                cases: cases
+                    .into_iter()
+                    .map(|(c, stmts)| (c, stmts.into_iter().map(Self::ast_stmt_to_hir).collect()))
+                    .collect(),
+                default: default
+                    .map(|stmts| stmts.into_iter().map(Self::ast_stmt_to_hir).collect()),
                 nobounds,
             },
             Stmt::While { span, cond, body } => HIRStmt::While {
@@ -348,13 +349,6 @@ impl HIRContext {
             },
             Stmt::Break { span } => HIRStmt::Break { span },
             Stmt::Continue { span } => HIRStmt::Continue { span },
-        }
-    }
-
-    fn ast_case_to_hir(case: Case) -> HIRCase {
-        HIRCase {
-            values: case.values,
-            body: Self::ast_stmt_to_hir(case.body),
         }
     }
 
@@ -404,7 +398,7 @@ impl HIRContext {
             } => HIRExpr::Member {
                 span,
                 base: Box::new(Self::ast_expr_to_hir(*base)),
-                field,
+                field: Box::new(Self::ast_expr_to_hir(*field)),
                 arrow,
                 ty: Type::Inbuilt(InbuiltType::U0),
             },
@@ -431,11 +425,7 @@ impl HIRContext {
                 ty: *ty,
                 expr: Box::new(Self::ast_expr_to_hir(*expr)),
             },
-            Expr::Paren { span, expr } => HIRExpr::Paren {
-                span,
-                expr: Box::new(Self::ast_expr_to_hir(*expr)),
-                ty: Type::Inbuilt(InbuiltType::U0),
-            },
+            Expr::ArrElems { .. } => todo!(),
         }
     }
 
@@ -444,7 +434,13 @@ impl HIRContext {
             let mut globals = SymTable::new();
             for decl in &module.decls {
                 if let HIRDeclaration::Var { name, ty, .. } = decl {
-                    globals.insert(name.clone(), SymEntry { ty: ty.clone() });
+                    globals.insert(
+                        name.clone(),
+                        SymEntry {
+                            ty: ty.clone(),
+                            params: None,
+                        },
+                    );
                 }
             }
             for decl in &mut module.decls {
@@ -462,20 +458,44 @@ impl HIRContext {
                 }
             }
             HIRDeclaration::Func {
+                name,
                 params,
                 body,
                 ret_ty,
                 ..
             } => {
+                let param_types = params.iter().map(|p| p.ty.clone()).collect::<Vec<_>>();
+                globals.insert(
+                    name.clone(),
+                    SymEntry {
+                        ty: ret_ty.clone(),
+                        params: Some(param_types),
+                    },
+                );
+
                 let mut locals: SymTable = params
                     .iter()
-                    .map(|p| (p.name.clone(), SymEntry { ty: p.ty.clone() }))
+                    .map(|p| {
+                        (
+                            p.name.clone(),
+                            SymEntry {
+                                ty: p.ty.clone(),
+                                params: None,
+                            },
+                        )
+                    })
                     .collect();
                 Self::infer_stmt(body, &mut locals, globals, Some(ret_ty));
             }
-            HIRDeclaration::Struct { fields, .. } => {
-                for f in fields {
-                    Self::infer_decl_types(f, globals);
+            HIRDeclaration::Class { fields, name, .. } => {
+                for (ty, field_name) in fields {
+                    globals.insert(
+                        format!("{}.{}", name, field_name).into(),
+                        SymEntry {
+                            ty: ty.clone(),
+                            params: None,
+                        },
+                    );
                 }
             }
             HIRDeclaration::Enum { variants, .. } => {
@@ -491,8 +511,36 @@ impl HIRContext {
 
     fn ensure_returns(module: &mut HIRModule) {
         for decl in &mut module.decls {
-            if let HIRDeclaration::Func { ret_ty, body, .. } = decl {
-                if *ret_ty == Type::Inbuilt(InbuiltType::U0) {
+            if let HIRDeclaration::Func {
+                name, ret_ty, body, ..
+            } = decl
+            {
+                if name == "main" && *ret_ty == Type::Inbuilt(InbuiltType::U0) {
+                    let original_body = std::mem::replace(
+                        body,
+                        HIRStmt::Block {
+                            span: DUMMY_SPAN,
+                            stmts: vec![],
+                        },
+                    );
+
+                    *body = HIRStmt::Block {
+                        span: DUMMY_SPAN,
+                        stmts: vec![
+                            original_body,
+                            HIRStmt::Return {
+                                span: DUMMY_SPAN,
+                                expr: Some(HIRExpr::Constant {
+                                    span: DUMMY_SPAN,
+                                    value: Constant::Int(0),
+                                    ty: Type::Inbuilt(InbuiltType::I32),
+                                }),
+                            },
+                        ],
+                    };
+
+                    *ret_ty = Type::Inbuilt(InbuiltType::I32);
+                } else if *ret_ty == Type::Inbuilt(InbuiltType::U0) {
                     Self::append_void_return(body);
                 }
             }
@@ -547,7 +595,13 @@ impl HIRContext {
                 if let Some(e) = init {
                     Self::infer_expr(e, locals, globals);
                 }
-                locals.insert(name.clone(), SymEntry { ty: ty.clone() });
+                locals.insert(
+                    name.clone(),
+                    SymEntry {
+                        ty: ty.clone(),
+                        params: None,
+                    },
+                );
             }
             HIRStmt::If {
                 cond_then_ladder,
@@ -562,10 +616,17 @@ impl HIRContext {
                     Self::infer_stmt(e, locals, globals, expected_ret_ty);
                 }
             }
-            HIRStmt::Switch { expr, cases, .. } => {
+            HIRStmt::Switch {
+                subject: expr,
+                cases,
+                ..
+            } => {
                 Self::infer_expr(expr, locals, globals);
-                for case in cases {
-                    Self::infer_stmt(&mut case.body, locals, globals, expected_ret_ty);
+
+                for (_const, body) in cases {
+                    for stmt in body {
+                        Self::infer_stmt(stmt, locals, globals, expected_ret_ty);
+                    }
                 }
             }
             HIRStmt::While { cond, body, .. } => {
@@ -635,16 +696,35 @@ impl HIRContext {
                 Self::infer_expr(e, locals, globals);
                 *ty = e.ty();
             }
+
             HIRExpr::Call { func, args, ty, .. } => {
-                for a in args {
+                for a in args.iter_mut() {
                     Self::infer_expr(a, locals, globals);
                 }
+
                 if let Some(entry) = locals.get(func).or_else(|| globals.get(func)) {
+                    // If function has param types, unify/cast args
+                    if let Some(param_types) = &entry.params {
+                        assert_eq!(
+                            args.len(),
+                            param_types.len(),
+                            "Argument count mismatch in call to {}",
+                            func
+                        );
+                        for (arg, param_ty) in args.iter_mut().zip(param_types) {
+                            if !Self::is_type_compatible(&arg.ty(), param_ty) {
+                                *arg.ty_mut() = param_ty.clone(); // cast/infer to param type
+                            }
+                        }
+                    }
+
+                    // Call type = function return type
                     *ty = entry.ty.clone();
                 } else {
                     *ty = Type::Inbuilt(InbuiltType::U0);
                 }
             }
+
             HIRExpr::Member { base, ty, .. } => {
                 Self::infer_expr(base, locals, globals);
                 *ty = base.ty();
@@ -670,10 +750,6 @@ impl HIRContext {
             }
             HIRExpr::Cast { expr: e, .. } => {
                 Self::infer_expr(e, locals, globals);
-            }
-            HIRExpr::Paren { expr: e, ty, .. } => {
-                Self::infer_expr(e, locals, globals);
-                *ty = e.ty();
             }
         }
     }
@@ -740,6 +816,52 @@ impl HIRContext {
             _ => false,
         }
     }
+
+    // TODO find a better way to wrap U0 main
+    pub fn wrap_main(module: &mut HIRModule) {
+        if let Some(main_func) = module.decls.iter().find(|d| match d {
+            HIRDeclaration::Func { name, .. } => name == "main",
+            _ => false,
+        }) {
+            if let HIRDeclaration::Func { ret_ty, .. } = main_func.clone() {
+                if ret_ty != Type::Inbuilt(InbuiltType::U0) {
+                    return;
+                }
+
+                let wrapper = HIRDeclaration::Func {
+                    span: DUMMY_SPAN,
+                    name: "__main_wrapper".into(),
+                    params: vec![],
+                    ret_ty: Type::Inbuilt(InbuiltType::I32),
+                    body: HIRStmt::Block {
+                        span: DUMMY_SPAN,
+                        stmts: vec![
+                            HIRStmt::Expr {
+                                span: DUMMY_SPAN,
+                                expr: HIRExpr::Call {
+                                    span: DUMMY_SPAN,
+                                    func: "main".into(),
+                                    args: vec![],
+                                    ty: Type::Inbuilt(InbuiltType::U0),
+                                },
+                                ty: Type::Inbuilt(InbuiltType::U0),
+                            },
+                            HIRStmt::Return {
+                                span: DUMMY_SPAN,
+                                expr: Some(HIRExpr::Constant {
+                                    span: DUMMY_SPAN,
+                                    value: Constant::Int(0),
+                                    ty: Type::Inbuilt(InbuiltType::I32),
+                                }),
+                            },
+                        ],
+                    },
+                };
+
+                module.decls.push(wrapper);
+            }
+        }
+    }
 }
 
 // this is so cool and big brain
@@ -762,8 +884,7 @@ impl HIRExprGives for HIRExpr {
             | HIRExpr::Member { ty, .. }
             | HIRExpr::Index { ty, .. }
             | HIRExpr::Conditional { ty, .. }
-            | HIRExpr::Cast { ty, .. }
-            | HIRExpr::Paren { ty, .. } => ty.clone(),
+            | HIRExpr::Cast { ty, .. } => ty.clone(),
         }
     }
 
@@ -778,8 +899,7 @@ impl HIRExprGives for HIRExpr {
             | HIRExpr::Member { ty, .. }
             | HIRExpr::Index { ty, .. }
             | HIRExpr::Conditional { ty, .. }
-            | HIRExpr::Cast { ty, .. }
-            | HIRExpr::Paren { ty, .. } => ty,
+            | HIRExpr::Cast { ty, .. } => ty,
         }
     }
 
@@ -794,8 +914,7 @@ impl HIRExprGives for HIRExpr {
             | HIRExpr::Member { span, .. }
             | HIRExpr::Index { span, .. }
             | HIRExpr::Conditional { span, .. }
-            | HIRExpr::Cast { span, .. }
-            | HIRExpr::Paren { span, .. } => *span,
+            | HIRExpr::Cast { span, .. } => *span,
         }
     }
 }

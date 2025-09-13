@@ -37,10 +37,10 @@ fn print_hir_decl(decl: &HIRDeclaration, level: usize) {
             );
             print_hir_stmt(body, level + 1);
         }
-        HIRDeclaration::Struct { name, fields, .. } => {
-            println!("{}Struct: {:?}", indent(level), name);
-            for f in fields {
-                print_hir_decl(f, level + 1);
+        HIRDeclaration::Class { name, fields, .. } => {
+            println!("{}Class: {}", indent(level), name);
+            for (ty, field_name) in fields {
+                println!("{}Field: {} : {:?}", indent(level + 1), field_name, ty);
             }
         }
         HIRDeclaration::Enum { name, variants, .. } => {
@@ -101,12 +101,18 @@ fn print_hir_stmt(stmt: &HIRStmt, level: usize) {
                 print_hir_stmt(e, level + 2);
             }
         }
-        HIRStmt::Switch { expr, cases, .. } => {
+        HIRStmt::Switch {
+            subject: expr,
+            cases,
+            ..
+        } => {
             println!("{}Switch:", indent(level));
             print_hir_expr(expr, level + 1);
-            for c in cases {
-                println!("{}Case:", indent(level + 1));
-                print_hir_stmt(&c.body, level + 2);
+            for (constant, body) in cases {
+                println!("{}Case: {:?}", indent(level + 1), constant);
+                for stmt in body {
+                    print_hir_stmt(stmt, level + 2);
+                }
             }
         }
         HIRStmt::While { cond, body, .. } => {
@@ -182,8 +188,9 @@ fn print_hir_expr(expr: &HIRExpr, level: usize) {
         HIRExpr::Member {
             base, field, ty, ..
         } => {
-            println!("{}Member ({:?}): {}", indent(level), ty, field);
+            println!("{}Member ({:?}):", indent(level), ty);
             print_hir_expr(base, level + 1);
+            print_hir_expr(field, level + 1);
         }
         HIRExpr::Index {
             base, index, ty, ..
@@ -209,10 +216,6 @@ fn print_hir_expr(expr: &HIRExpr, level: usize) {
         }
         HIRExpr::Cast { expr: e, ty, .. } => {
             println!("{}Cast ({:?}):", indent(level), ty);
-            print_hir_expr(e, level + 1);
-        }
-        HIRExpr::Paren { expr: e, ty, .. } => {
-            println!("{}Paren ({:?}):", indent(level), ty);
             print_hir_expr(e, level + 1);
         }
     }
