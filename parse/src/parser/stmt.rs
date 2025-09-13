@@ -1,4 +1,4 @@
-use ast::ast::{Expr, Stmt};
+use ast::ast::{Constant, Expr, Stmt};
 
 use crate::{
     lexer::token::{LitKind, TokenKind},
@@ -28,14 +28,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseErr> {
-        println!("\n\nGoing to parse new statement: {:?}", self.curr_tok);
-        println!("Next: {:?}", self.peek_token());
+        // println!("\n\nGoing to parse new statement: {:?}", self.curr_tok);
+        // println!("Next: {:?}", self.peek_token());
 
         match &self.curr_tok.kind {
             TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
             TokenKind::For => self.parse_for(),
             TokenKind::While => self.parse_while(),
+            TokenKind::Switch => self.parse_switch(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
 
@@ -44,18 +45,18 @@ impl<'a> Parser<'a> {
             TokenKind::Literal(lit) if lit.kind == LitKind::Str => self.parse_printf_call(),
 
             _ => {
-                println!(
-                    "Parsing expression statement, curr_tok: {:?}",
-                    self.curr_tok
-                );
+                // println!(
+                //     "Parsing expression statement, curr_tok: {:?}",
+                //     self.curr_tok
+                // );
                 let start = self.curr_tok.span;
                 let expr = self.parse_expr()?;
-                println!("Parsed expr: {:?}, now curr_tok: {:?}", expr, self.curr_tok);
+                // println!("Parsed expr: {:?}, now curr_tok: {:?}", expr, self.curr_tok);
                 if !self.eat_no_expect(&TokenKind::Semi) {
                     println!("Expected semicolon but found: {:?}", self.curr_tok);
                     // handle
                 }
-                println!("Successfully parsed expression statement");
+                // println!("Successfully parsed expression statement");
                 Ok(Stmt::Expr {
                     span: start.merge(self.prev_tok.span),
                     expr,
@@ -214,6 +215,94 @@ impl<'a> Parser<'a> {
             cond,
             body: Box::new(body),
         })
+    }
+
+    fn parse_switch(&mut self) -> Result<Stmt, ParseErr> {
+        let start = self.curr_tok.span;
+        if !self.eat_no_expect(&TokenKind::Switch) {
+            // handle
+        }
+
+        println!("In switch => {:?}", self.curr_tok);
+
+        let nobounds = if self.eat_no_expect(&TokenKind::LParen) {
+            false
+        } else if self.eat_no_expect(&TokenKind::LBracket) {
+            true
+        } else {
+            todo!() // err here
+        };
+
+        println!("No bounds = {}", nobounds);
+
+        let subject = self.parse_expr()?;
+        if nobounds {
+            if self.eat_no_expect(&TokenKind::RBracket) {}
+        } else {
+            if !self.eat_no_expect(&TokenKind::RParen) {}
+        }
+        println!("subject => {:?}", subject);
+
+        if self.eat_no_expect(&TokenKind::LCurly) {
+            //err
+        }
+        println!("Before cases: => {:?}", self.curr_tok);
+
+        let cases = Parser::series_of(self, &Parser::parse_case, None)?;
+        println!("Cases => {:#?}", cases);
+
+        let default = if self.eat_no_expect(&TokenKind::Default) {
+            if !self.eat_no_expect(&TokenKind::Colon) {}
+            let mut dstmts = Vec::new();
+            while !self.curr_tok.is_case_ender() {
+                dstmts.push(self.parse_statement()?);
+            }
+            Some(dstmts)
+        } else {
+            None
+        };
+
+        if self.eat_no_expect(&TokenKind::RCurly) {
+            //err
+        }
+
+        Ok(Stmt::Switch {
+            span: start.merge(self.prev_tok.span),
+            subject,
+            cases,
+            default,
+            nobounds,
+        })
+    }
+
+    fn parse_case(&mut self) -> Result<Option<(Constant, Vec<Stmt>)>, ParseErr> {
+        if !self.check_no_expect(&TokenKind::Case) {
+            return Ok(None);
+        }
+
+        self.bump();
+        println!("Past case: {:?}", self.curr_tok);
+
+        let cval = if let Expr::Constant { value, .. } = self.parse_expr()? {
+            value
+        } else {
+            todo!() // err here
+        };
+        println!("Cval: {:?}", cval);
+
+        if !self.eat_no_expect(&TokenKind::Colon) {
+            //err
+        }
+        println!("Ate colon");
+
+        let mut body = Vec::new();
+
+        while !self.curr_tok.is_case_ender() {
+            body.push(self.parse_statement()?);
+        }
+        println!("Body:: \n{:?}", body);
+
+        Ok(Some((cval, body)))
     }
 
     fn parse_return(&mut self) -> Result<Stmt, ParseErr> {

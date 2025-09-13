@@ -1,9 +1,9 @@
 use std::{fs, path::PathBuf};
 
-use ast::ast::{Declaration, Module, Type};
+use ast::ast::{Declaration, Label, Module, Type};
 
 use crate::{
-    lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor},
+    lexer::lex_token_trees,
     parser::Parser,
     symtab::{ModuleScope, Scope, SymbolTable},
 };
@@ -13,6 +13,8 @@ pub struct ParseSess {
     pub source_files: Vec<SourceFile>,
     pub curr: u16,
     pub modules: Vec<Module>,
+
+    pub sym_tab: Option<SymbolTable>,
 }
 
 impl ParseSess {
@@ -23,6 +25,7 @@ impl ParseSess {
             source_files,
             curr: 0,
             modules: Vec::new(),
+            sym_tab: None,
         }
     }
 
@@ -54,8 +57,6 @@ impl ParseSess {
             match parser.parse_module() {
                 Ok(parsed) => {
                     for e in parser.errs {
-                        println!("{:?}", e);
-
                         let (filename, source) = self.src_file(e.loc.fid as usize);
                         e.report(filename.to_str().unwrap(), source);
                     }
@@ -131,28 +132,29 @@ impl ParseSess {
         }
 
         println!("Symbol table=>\n{:#?}", sym_tab);
+        self.sym_tab = Some(sym_tab);
 
         Ok(())
     }
 
     fn find_module_by_name(&self, name: &str) -> Option<usize> {
-        // println!("Looking for: '{}'", name);
-        // println!("Available modules:");
-        // for (idx, source_file) in self.source_files.iter().enumerate() {
-        //     let path = source_file.name.to_str();
-        //     println!("  [{}]: {:?}", idx, path);
-        // }
         for (idx, source_file) in self.source_files.iter().enumerate() {
             let sbpt = source_file.name.to_str();
-            println!("Finding module by name: {:?}", sbpt);
             if sbpt == Some(name) {
-                println!("Found module name: {:?} at {idx}", sbpt);
                 return Some(idx);
             } else {
                 println!("Couldn't find {}", name);
             }
         }
         None
+    }
+
+    pub fn lookup_sym(&self, mod_idx: usize, name: &Label) -> Option<&Type> {
+        if let Some(ref sym_tab) = self.sym_tab {
+            sym_tab.module_scopes[mod_idx].resolved_symbols.lookup(name)
+        } else {
+            None
+        }
     }
 
     pub fn src_file(&self, idx: usize) -> (PathBuf, &str) {

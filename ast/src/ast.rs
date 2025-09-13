@@ -25,10 +25,10 @@ pub enum Declaration {
         params: Vec<Param>,
         body: Stmt,
     },
-    Struct {
+    Class {
         span: Span,
-        name: Option<Label>,
-        fields: Vec<Declaration>, // dumbed down
+        name: Label,
+        fields: Vec<(Type, Label)>,
     },
     Enum {
         span: Span,
@@ -106,8 +106,9 @@ pub enum Stmt {
     },
     Switch {
         span: Span,
-        expr: Expr,
-        cases: Vec<Case>,
+        subject: Expr,
+        cases: Vec<(Constant, Vec<Stmt>)>,
+        default: Option<Vec<Stmt>>,
         // switch [i] -> can skip default
         // read https://holyc-lang.com/docs/language-spec/learn-control-flow#without-bounds-checking
         nobounds: bool,
@@ -139,8 +140,7 @@ pub enum Stmt {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Case {
-    // possible TODO: Constant -> Expr???
-    pub values: Option<Vec<Constant>>,
+    pub values: Constant,
     pub body: Stmt,
 }
 
@@ -196,10 +196,6 @@ pub enum Expr {
     Cast {
         span: Span,
         ty: Box<Type>,
-        expr: Box<Expr>,
-    },
-    Paren {
-        span: Span,
         expr: Box<Expr>,
     },
 }
@@ -304,8 +300,8 @@ impl Declaration {
         }
     }
 
-    pub fn strukt(span: Span, name: Option<EcoString>, fields: Vec<Declaration>) -> Self {
-        Self::Struct { span, name, fields }
+    pub fn klass(span: Span, name: EcoString, fields: Vec<(Type, Label)>) -> Self {
+        Self::Class { span, name, fields }
     }
 
     pub fn enumm(span: Span, name: Option<EcoString>, variants: Vec<Enumerator>) -> Self {
@@ -450,12 +446,6 @@ impl Expr {
         Self::Cast {
             span,
             ty: Box::new(ty),
-            expr: Box::new(expr),
-        }
-    }
-    pub fn paren(span: Span, expr: Expr) -> Self {
-        Self::Paren {
-            span,
             expr: Box::new(expr),
         }
     }
