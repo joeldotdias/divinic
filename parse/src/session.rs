@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, process::exit};
 
 use ast::ast::{Declaration, Label, Module, Type};
 
@@ -31,12 +31,15 @@ impl ParseSess {
     }
 
     pub fn mk_asteez(&mut self) {
+        let mut has_errs = false;
+
         for (i, f) in self.source_files.iter().enumerate() {
             self.curr = i as u16;
 
             let stream = match lex_token_trees(&self, &f.src) {
                 Ok(ts) => ts,
                 Err(errs) => {
+                    has_errs = true;
                     for e in errs {
                         let (filename, source) = self.src_file(e.loc.fid as usize);
                         e.report(filename.to_str().unwrap(), source);
@@ -58,21 +61,27 @@ impl ParseSess {
             match parser.parse_module() {
                 Ok(parsed) => {
                     for e in parser.errs {
+                        has_errs = true;
                         let (filename, source) = self.src_file(e.loc.fid as usize);
                         e.report(filename.to_str().unwrap(), source);
                     }
                     self.modules.push(parsed);
                 }
                 Err(err) => {
+                    has_errs = true;
                     let mut errs = parser.errs;
                     errs.push(err);
                     for e in errs {
                         let (filename, source) = self.src_file(e.loc.fid as usize);
                         e.report(filename.to_str().unwrap(), source);
                     }
-                    return;
+                    continue;
                 }
             };
+        }
+
+        if has_errs {
+            exit(1);
         }
     }
 
