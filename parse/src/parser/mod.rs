@@ -1,4 +1,4 @@
-use std::{fs, mem};
+use std::mem;
 
 use ast::ast::{InbuiltType, Module, Type};
 use ecow::EcoString;
@@ -94,7 +94,7 @@ impl<'a> Parser<'a> {
         Ok(parsed)
     }
 
-    fn peek_token(&self) -> TokenKind {
+    pub fn peek_token(&self) -> TokenKind {
         self.look_ahead(1, |tok| tok.clone())
     }
 

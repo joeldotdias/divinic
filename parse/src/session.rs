@@ -81,7 +81,7 @@ impl ParseSess {
             module_scopes: Vec::new(),
         };
 
-        for (midx, module) in self.modules.iter().enumerate() {
+        for (_midx, module) in self.modules.iter().enumerate() {
             let mut local_scope = Scope::new();
 
             for decl in &module.decls {

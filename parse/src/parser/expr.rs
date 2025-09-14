@@ -6,7 +6,10 @@ use ecow::EcoString;
 
 use crate::{
     lexer::token::{LitKind, TokenKind},
-    parser::{ParseResult, Parser},
+    parser::{
+        ParseResult, Parser,
+        error::{ParseErrKind, mk_parse_err},
+    },
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -96,14 +99,21 @@ impl<'a> Parser<'a> {
         loop {
             match &self.curr_tok.kind {
                 TokenKind::LParen => {
-                    // // func call
-                    // todo!()
                     expr = self.parse_func_call(expr)?;
                 }
                 TokenKind::LBracket => {
                     self.bump();
                     let index = self.parse_expr()?;
-                    if !self.eat_no_expect(&TokenKind::RBracket) {}
+                    if !self.eat_no_expect(&TokenKind::RBracket) {
+                        return Err(mk_parse_err(
+                            ParseErrKind::FailedExpectation {
+                                found: self.curr_tok.kind.clone(),
+                                expected: TokenKind::RBracket,
+                                context: "index expression",
+                            },
+                            self.curr_tok.span,
+                        ));
+                    }
                     expr = Expr::Index {
                         span: start.merge(self.prev_tok.span),
                         base: Box::new(expr),
@@ -160,7 +170,14 @@ impl<'a> Parser<'a> {
                 self.bump();
                 let inner = self.parse_expr()?;
                 if !self.eat_no_expect(&TokenKind::RParen) {
-                    // handle
+                    return Err(mk_parse_err(
+                        ParseErrKind::FailedExpectation {
+                            found: self.curr_tok.kind.clone(),
+                            expected: TokenKind::RParen,
+                            context: "parenthesized expression",
+                        },
+                        self.curr_tok.span,
+                    ));
                 }
                 Ok(inner)
             }
@@ -172,7 +189,14 @@ impl<'a> Parser<'a> {
                     Some(&TokenKind::Comma),
                 )?;
                 if !self.eat_no_expect(&TokenKind::RCurly) {
-                    //err
+                    return Err(mk_parse_err(
+                        ParseErrKind::FailedExpectation {
+                            found: self.curr_tok.kind.clone(),
+                            expected: TokenKind::RCurly,
+                            context: "array elements",
+                        },
+                        self.curr_tok.span,
+                    ));
                 }
 
                 Ok(Expr::ArrElems {
@@ -197,10 +221,13 @@ impl<'a> Parser<'a> {
                     LitKind::Str => self.parse_string_literal(sym),
                 }
             }
-            _ => {
-                println!("\n\nHuh: {:?}", self.curr_tok);
-                todo!() //
-            }
+            _ => Err(mk_parse_err(
+                ParseErrKind::UnexpectedToken {
+                    found: self.curr_tok.kind.clone(),
+                    context: "expression",
+                },
+                self.curr_tok.span,
+            )),
         }
     }
 
@@ -209,10 +236,24 @@ impl<'a> Parser<'a> {
         let fn_name = if let Expr::Ident { name, .. } = label {
             name
         } else {
-            todo!() // err
+            return Err(mk_parse_err(
+                ParseErrKind::BadFunctionCall {
+                    reason: ("function name must be an identifier"),
+                },
+                self.curr_tok.span,
+            ));
         };
 
-        if !self.eat_no_expect(&TokenKind::LParen) {}
+        if !self.eat_no_expect(&TokenKind::LParen) {
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::LParen,
+                    context: "func call",
+                },
+                self.curr_tok.span,
+            ));
+        }
 
         let args = if self.eat_no_expect(&TokenKind::RParen) {
             vec![]
@@ -222,7 +263,16 @@ impl<'a> Parser<'a> {
                 &|parser: &mut Parser| parser.parse_expr().map(Some),
                 Some(&TokenKind::Comma),
             )?;
-            if !self.eat_no_expect(&TokenKind::RParen) {}
+            if !self.eat_no_expect(&TokenKind::RParen) {
+                return Err(mk_parse_err(
+                    ParseErrKind::FailedExpectation {
+                        found: self.curr_tok.kind.clone(),
+                        expected: TokenKind::RParen,
+                        context: "func call arguments",
+                    },
+                    self.curr_tok.span,
+                ));
+            }
             args
         };
 
@@ -237,9 +287,21 @@ impl<'a> Parser<'a> {
     fn parse_int_literal(&mut self, sym: EcoString) -> ParseResult<Expr> {
         let span = self.curr_tok.span;
         self.bump();
+        let num = match str::parse::<i64>(&sym) {
+            Ok(n) => n,
+            Err(e) => {
+                return Err(mk_parse_err(
+                    ParseErrKind::InvalidInteger {
+                        value: sym.clone(),
+                        reason: e.to_string(),
+                    },
+                    self.curr_tok.span,
+                ));
+            }
+        };
         Ok(Expr::Constant {
             span,
-            value: Constant::Int(str::parse::<i64>(&sym).unwrap()),
+            value: Constant::Int(num),
         })
     }
 

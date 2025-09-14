@@ -1,7 +1,7 @@
 use ast::ast::{Declaration, Label, Param, Type};
 
 use crate::{
-    lexer::token::{LitInner, LitKind, TokenKind},
+    lexer::token::{LitInner, TokenKind},
     parser::{ParseResult, Parser, error::ParseErr},
 };
 

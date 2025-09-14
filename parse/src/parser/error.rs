@@ -20,6 +20,22 @@ pub enum ParseErrKind {
     ReservedKeywordAsIdent {
         kw: EcoString,
     },
+    UnexpectedToken {
+        found: TokenKind,
+        context: &'static str,
+    },
+    FailedExpectation {
+        expected: TokenKind,
+        found: TokenKind,
+        context: &'static str,
+    },
+    BadFunctionCall {
+        reason: &'static str,
+    },
+    InvalidInteger {
+        value: EcoString,
+        reason: String,
+    },
 }
 
 impl ParseErr {
@@ -75,6 +91,39 @@ impl ParseErrKind {
                 )],
                 Some("Identifiers must start with a letter or underscore and contain only letters, digits, and underscores".to_string()),
             ),
+            ParseErrKind::UnexpectedToken { found, context } => (
+                "Encountered unexpected token",
+                vec![(
+                    span,
+                    format!("Unexpected `{}` in {}", found.to_str(), context))
+                ],
+                None
+            ),
+            ParseErrKind::FailedExpectation { expected, found, context } => (
+                "Failed expectation",
+                vec![(
+                    span,
+                    format!("Expected `{}` after {}, but found {}", expected.to_str(), context, found.to_str()))
+                ],
+                Some(format!("Try replacing `{}` with `{}`", found.to_str(), expected.to_str()))
+            ),
+            ParseErrKind::BadFunctionCall { reason } => (
+                "Bad functionc call",
+                vec![(span, reason.to_string())],
+                None,
+            ),
+            ParseErrKind::InvalidInteger { value, reason } => (
+                "Invalid integer literal",
+                vec![(
+                    span,
+                    format!("Cannot parse `{}` as integer: {}", value, reason),
+                )],
+                Some("Integer literals must be valid decimal numbers".to_string()),
+            )
+
+
+
+            // _ => todo!()
         }
     }
 }

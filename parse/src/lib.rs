@@ -17,11 +17,7 @@ pub struct AnnotatedModule {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        lexer::{lex_token_trees, token::TokenKind, tokentree::TokenCursor},
-        parser::Parser,
-        session::ParseSess,
-    };
+    use crate::{lexer::lex_token_trees, parser::Parser, session::ParseSess};
 
     #[test]
     fn it_works() {

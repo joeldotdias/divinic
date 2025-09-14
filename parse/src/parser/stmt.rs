@@ -2,14 +2,24 @@ use ast::ast::{Constant, Expr, Stmt, Type};
 
 use crate::{
     lexer::token::{LitKind, TokenKind},
-    parser::{Parser, error::ParseErr},
+    parser::{
+        Parser,
+        error::{ParseErr, ParseErrKind, mk_parse_err},
+    },
 };
 
 impl<'a> Parser<'a> {
     pub fn parse_block(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::LCurly) {
-            // handle err
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::LCurly,
+                    context: "beginning of block",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         let mut stmts = Vec::new();
@@ -18,7 +28,14 @@ impl<'a> Parser<'a> {
         }
 
         if !self.eat_no_expect(&TokenKind::RCurly) {
-            //handle
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::RCurly,
+                    context: "statement block",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         Ok(Stmt::Block {
@@ -45,8 +62,14 @@ impl<'a> Parser<'a> {
                 let start = self.curr_tok.span;
                 let expr = self.parse_expr()?;
                 if !self.eat_no_expect(&TokenKind::Semi) {
-                    println!("Expected semicolon but found: {:?}", self.curr_tok);
-                    // handle
+                    return Err(mk_parse_err(
+                        ParseErrKind::FailedExpectation {
+                            found: self.curr_tok.kind.clone(),
+                            expected: TokenKind::Semi,
+                            context: "statement block",
+                        },
+                        self.curr_tok.span,
+                    ));
                 }
                 Ok(Stmt::Expr {
                     span: start.merge(self.prev_tok.span),
@@ -94,15 +117,29 @@ impl<'a> Parser<'a> {
     fn parse_if(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::If) {
-            // handle err
+            panic!("if should always start with if");
         }
         if !self.eat_no_expect(&TokenKind::LParen) {
-            // handle err
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::LParen,
+                    context: "if condition",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         let cond = self.parse_expr()?;
         if !self.eat_no_expect(&TokenKind::RParen) {
-            // handle err
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::RParen,
+                    context: "if condition",
+                },
+                self.curr_tok.span,
+            ));
         }
         let then_branch = self.parse_block()?;
 
@@ -115,12 +152,26 @@ impl<'a> Parser<'a> {
                 self.bump();
 
                 if !self.eat_no_expect(&TokenKind::LParen) {
-                    // handle err
+                    return Err(mk_parse_err(
+                        ParseErrKind::FailedExpectation {
+                            found: self.curr_tok.kind.clone(),
+                            expected: TokenKind::LParen,
+                            context: "if condition",
+                        },
+                        self.curr_tok.span,
+                    ));
                 }
 
                 let cond = self.parse_expr()?;
                 if !self.eat_no_expect(&TokenKind::RParen) {
-                    // handle err
+                    return Err(mk_parse_err(
+                        ParseErrKind::FailedExpectation {
+                            found: self.curr_tok.kind.clone(),
+                            expected: TokenKind::RParen,
+                            context: "if condition",
+                        },
+                        self.curr_tok.span,
+                    ));
                 }
                 let then_branch = self.parse_block()?;
                 cond_then_ladder.push((cond, then_branch));
@@ -147,11 +198,18 @@ impl<'a> Parser<'a> {
     fn parse_for(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::For) {
-            // handle
+            panic!("should always be a for");
         }
 
         if !self.eat_no_expect(&TokenKind::LParen) {
-            // handle
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::LParen,
+                    context: "for clause",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         let init = if !self.eat_no_expect(&TokenKind::Semi) {
@@ -163,7 +221,14 @@ impl<'a> Parser<'a> {
         let cond = if !self.eat_no_expect(&TokenKind::Semi) {
             let cond = Some(self.parse_expr()?);
             if !self.eat_no_expect(&TokenKind::Semi) {
-                // handle
+                return Err(mk_parse_err(
+                    ParseErrKind::FailedExpectation {
+                        found: self.curr_tok.kind.clone(),
+                        expected: TokenKind::Semi,
+                        context: "for condition",
+                    },
+                    self.curr_tok.span,
+                ));
             }
             cond
         } else {
@@ -173,7 +238,14 @@ impl<'a> Parser<'a> {
         let step = if !self.eat_no_expect(&TokenKind::RParen) {
             let step = Some(self.parse_expr()?);
             if !self.eat_no_expect(&TokenKind::RParen) {
-                // handle
+                return Err(mk_parse_err(
+                    ParseErrKind::FailedExpectation {
+                        found: self.curr_tok.kind.clone(),
+                        expected: TokenKind::Semi,
+                        context: "for step",
+                    },
+                    self.curr_tok.span,
+                ));
             }
             step
         } else {
@@ -194,16 +266,30 @@ impl<'a> Parser<'a> {
     fn parse_while(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::While) {
-            // handle
+            panic!("should only start with while");
         }
 
         if !self.eat_no_expect(&TokenKind::LParen) {
-            // handle
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::LParen,
+                    context: "while condition",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         let cond = self.parse_expr()?;
         if !self.eat_no_expect(&TokenKind::RParen) {
-            // handle
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::RParen,
+                    context: "while condition",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         let body = self.parse_block()?;
@@ -218,7 +304,7 @@ impl<'a> Parser<'a> {
     fn parse_switch(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::Switch) {
-            // handle
+            panic!("should always start with switch");
         }
 
         let nobounds = if self.eat_no_expect(&TokenKind::LParen) {
@@ -226,24 +312,64 @@ impl<'a> Parser<'a> {
         } else if self.eat_no_expect(&TokenKind::LBracket) {
             true
         } else {
-            todo!() // err here
+            return Err(mk_parse_err(
+                ParseErrKind::UnexpectedToken {
+                    found: self.curr_tok.kind.clone(),
+                    context: "switch subject",
+                },
+                self.curr_tok.span,
+            ));
         };
 
         let subject = self.parse_expr()?;
         if nobounds {
-            if self.eat_no_expect(&TokenKind::RBracket) {}
+            if self.eat_no_expect(&TokenKind::RBracket) {
+                return Err(mk_parse_err(
+                    ParseErrKind::FailedExpectation {
+                        found: self.curr_tok.kind.clone(),
+                        expected: TokenKind::RBracket,
+                        context: "switch subject",
+                    },
+                    self.curr_tok.span,
+                ));
+            }
         } else {
-            if !self.eat_no_expect(&TokenKind::RParen) {}
+            if !self.eat_no_expect(&TokenKind::RParen) {
+                return Err(mk_parse_err(
+                    ParseErrKind::FailedExpectation {
+                        found: self.curr_tok.kind.clone(),
+                        expected: TokenKind::RParen,
+                        context: "switch subject",
+                    },
+                    self.curr_tok.span,
+                ));
+            }
         }
 
         if self.eat_no_expect(&TokenKind::LCurly) {
-            //err
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::LCurly,
+                    context: "switch block",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         let cases = Parser::series_of(self, &Parser::parse_case, None)?;
 
         let default = if self.eat_no_expect(&TokenKind::Default) {
-            if !self.eat_no_expect(&TokenKind::Colon) {}
+            if !self.eat_no_expect(&TokenKind::Colon) {
+                return Err(mk_parse_err(
+                    ParseErrKind::FailedExpectation {
+                        found: self.curr_tok.kind.clone(),
+                        expected: TokenKind::Colon,
+                        context: "default case",
+                    },
+                    self.curr_tok.span,
+                ));
+            }
             let mut dstmts = Vec::new();
             while !self.curr_tok.is_case_ender() {
                 dstmts.push(self.parse_statement()?);
@@ -254,7 +380,14 @@ impl<'a> Parser<'a> {
         };
 
         if self.eat_no_expect(&TokenKind::RCurly) {
-            //err
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::RCurly,
+                    context: "switch block",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         Ok(Stmt::Switch {
@@ -280,7 +413,14 @@ impl<'a> Parser<'a> {
         };
 
         if !self.eat_no_expect(&TokenKind::Colon) {
-            //err
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::Colon,
+                    context: "case clause",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         let mut body = Vec::new();
@@ -295,7 +435,7 @@ impl<'a> Parser<'a> {
     fn parse_return(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::Return) {
-            // handle
+            panic!("should always start with return");
         }
 
         let expr = if self.curr_tok.kind == TokenKind::Semi {
@@ -304,7 +444,14 @@ impl<'a> Parser<'a> {
             Some(self.parse_expr()?)
         };
         if !self.eat_no_expect(&TokenKind::Semi) {
-            // handle
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::Semi,
+                    context: "return",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         Ok(Stmt::Return {
@@ -324,8 +471,14 @@ impl<'a> Parser<'a> {
 
         let pspan = start.merge(self.prev_tok.span);
         if !self.eat_no_expect(&TokenKind::Semi) {
-            println!("Expected semicolon but found: {:?}", self.curr_tok);
-            // handle
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::Semi,
+                    context: "function call",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         Ok(Stmt::Expr {
@@ -341,11 +494,18 @@ impl<'a> Parser<'a> {
     fn parse_break(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::Break) {
-            // handle
+            panic!("How did this even happen");
         }
 
         if !self.eat_no_expect(&TokenKind::Semi) {
-            // handle
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::Semi,
+                    context: "break",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         Ok(Stmt::Break {
@@ -356,11 +516,18 @@ impl<'a> Parser<'a> {
     fn parse_continue(&mut self) -> Result<Stmt, ParseErr> {
         let start = self.curr_tok.span;
         if !self.eat_no_expect(&TokenKind::Continue) {
-            // handle
+            panic!("How did this even happen");
         }
 
         if !self.eat_no_expect(&TokenKind::Semi) {
-            // handle
+            return Err(mk_parse_err(
+                ParseErrKind::FailedExpectation {
+                    found: self.curr_tok.kind.clone(),
+                    expected: TokenKind::Semi,
+                    context: "continue",
+                },
+                self.curr_tok.span,
+            ));
         }
 
         Ok(Stmt::Continue {
